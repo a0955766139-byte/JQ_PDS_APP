@@ -4,7 +4,7 @@ import time
 import random
 import sqlite3
 
-# 匯入規則 (確保 databases 資料夾存在)
+# 匯入規則
 try:
     from databases.pds_rules import PDS_CODES, LIFE_PATH_MEANINGS, PERSONAL_YEAR_MEANINGS
     from databases.card_rules import DIVINATION_CARDS
@@ -12,22 +12,16 @@ except ImportError:
     st.error("⚠️ 找不到 databases 資料夾！請檢查檔案結構。")
     st.stop()
 
-# --- 1. 資料庫管家 (升級版：增加了每日抽牌紀錄表) ---
+# --- 資料庫管家 ---
 def init_db():
     conn = sqlite3.connect('databases/user_journals.db')
     c = conn.cursor()
-    # 日記表 (舊的)
     c.execute('''CREATE TABLE IF NOT EXISTS journals (username TEXT, date TEXT, content TEXT)''')
-    
-    # 🔥 新增：每日抽牌紀錄表 (欄位：帳號、日期、牌名、詩詞、解釋)
-    c.execute('''CREATE TABLE IF NOT EXISTS daily_draws 
-                 (username TEXT, draw_date TEXT, title TEXT, poem TEXT, desc TEXT)''')
-    
+    c.execute('''CREATE TABLE IF NOT EXISTS daily_draws (username TEXT, draw_date TEXT, title TEXT, poem TEXT, desc TEXT)''')
     conn.commit()
     conn.close()
 
 def save_journal(username, content):
-    """存日記"""
     conn = sqlite3.connect('databases/user_journals.db')
     c = conn.cursor()
     date_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
@@ -36,7 +30,6 @@ def save_journal(username, content):
     conn.close()
 
 def get_journals(username):
-    """讀日記"""
     conn = sqlite3.connect('databases/user_journals.db')
     c = conn.cursor()
     c.execute("SELECT date, content FROM journals WHERE username=? ORDER BY date DESC", (username,))
@@ -44,33 +37,26 @@ def get_journals(username):
     conn.close()
     return data
 
-# 🔥 新功能：檢查今天有沒有抽過牌
 def get_today_draw(username):
     conn = sqlite3.connect('databases/user_journals.db')
     c = conn.cursor()
-    today_str = datetime.date.today().strftime("%Y-%m-%d") # 今天的日期 (例如 2026-01-16)
-    
-    # 找找看這個人、今天、有沒有資料
+    today_str = datetime.date.today().strftime("%Y-%m-%d")
     c.execute("SELECT title, poem, desc FROM daily_draws WHERE username=? AND draw_date=?", (username, today_str))
-    result = c.fetchone() # 抓一筆資料
+    result = c.fetchone()
     conn.close()
-    return result # 如果有抽過會回傳資料，沒抽過會回傳 None
+    return result
 
-# 🔥 新功能：儲存今天的牌
 def save_today_draw(username, card):
     conn = sqlite3.connect('databases/user_journals.db')
     c = conn.cursor()
     today_str = datetime.date.today().strftime("%Y-%m-%d")
-    
-    c.execute("INSERT INTO daily_draws VALUES (?, ?, ?, ?, ?)", 
-              (username, today_str, card['title'], card['poem'], card['desc']))
+    c.execute("INSERT INTO daily_draws VALUES (?, ?, ?, ?, ?)", (username, today_str, card['title'], card['poem'], card['desc']))
     conn.commit()
     conn.close()
 
-# 啟動時先檢查資料庫
 init_db()
 
-# --- 2. PDS 計算核心 (保持不變) ---
+# --- PDS 計算核心 ---
 def get_digit_sum(n):
     while n > 9: n = sum(int(d) for d in str(n))
     return n
@@ -100,54 +86,84 @@ def calculate_personal_year(birthdate):
     total = datetime.date.today().year + birthdate.month + birthdate.day
     return get_digit_sum(total), datetime.date.today().year
 
-# --- 3. 介面設定 ---
-st.set_page_config(page_title="喬鈞心學 App", page_icon="🧿")
+# --- 介面設定 ---
+st.set_page_config(page_title="喬鈞心學", page_icon="👁️", layout="wide")
 
 if 'logged_in' not in st.session_state: st.session_state.logged_in = False
 if 'username' not in st.session_state: st.session_state.username = ""
 if 'users_db' not in st.session_state: st.session_state.users_db = {"admin": "8888"}
 if 'show_register_hint' not in st.session_state: st.session_state.show_register_hint = False
 
-# --- 4. 頁面視圖 ---
+# --- 頁面視圖 ---
 
 def show_login_page():
-    """首頁"""
-    st.markdown("<h2 style='text-align: center;'>🧿 喬鈞心學</h2>", unsafe_allow_html=True)
-    st.markdown("<p style='text-align: center; color: grey;'>探索生命原廠設定</p>", unsafe_allow_html=True)
+    """首頁設計 (Split Screen Layout)"""
     
-    if st.button("🔮 抽取今日指引 (點我)", type="primary", use_container_width=True):
-        st.session_state.show_register_hint = True
-    
-    if st.session_state.show_register_hint:
-        st.warning("🔒 請先登入或註冊會員")
+    # 使用 columns 把畫面切成左右兩邊
+    # [1.5, 1] 代表左邊寬度是 1.5，右邊是 1 (左寬右窄)
+    col1, col2 = st.columns([1.5, 1], gap="large")
+
+    # --- 左側：品牌故事與介紹 ---
+    with col1:
+        st.markdown("# 👁️ 歡迎來到喬鈞心學")
+        st.markdown("### 探索你到底是什麼模樣，解開生命的原始設定。")
         
-    st.markdown("---")
-    
-    tab1, tab2 = st.tabs(["登入", "註冊"])
-    with tab1:
-        u = st.text_input("帳號", key="u_login")
-        p = st.text_input("密碼", type="password", key="p_login")
-        if st.button("登入", use_container_width=True):
-            if u in st.session_state.users_db and st.session_state.users_db[u] == p:
-                st.session_state.logged_in = True
-                st.session_state.username = u
-                st.session_state.show_register_hint = False
-                st.rerun()
-            else:
-                st.error("帳號或密碼錯誤 (admin/8888)")
-    with tab2:
-        new_u = st.text_input("設定帳號")
-        email = st.text_input("Gmail", placeholder="name@gmail.com")
-        new_p = st.text_input("設定密碼", type="password")
-        if st.button("免費註冊", type="primary", use_container_width=True):
-            if not email.endswith("@gmail.com"): st.error("限 Gmail 註冊")
-            elif new_u and new_p:
-                st.session_state.users_db[new_u] = new_p
-                st.success("註冊成功！請登入")
-            else: st.error("請填寫完整")
+        # 插入一張更有質感的圖片 (類似你截圖中的筆記本風格)
+        st.image("https://images.unsplash.com/photo-1517842645767-c639042777db?q=80&w=2670&auto=format&fit=crop", 
+                 caption="數字是世界通用的語言。", use_container_width=True)
+        
+        st.markdown("### 什麼是數字心理學？")
+        # 使用 info 藍色區塊來強調
+        st.info("這不只是算命，而是一套結合了畢達哥拉斯數學與現代心理學的行為分析系統。幫助你看見天賦、理解挑戰、規劃未來。")
+
+        # 這裡放一個誘餌按鈕 (Lead Magnet)
+        st.markdown("<br>", unsafe_allow_html=True)
+        if st.button("🔮 感到迷惘？先抽張牌試試 (每日指引)", use_container_width=True):
+             st.session_state.show_register_hint = True
+        
+        if st.session_state.show_register_hint:
+            st.warning("🔒 請先在右側註冊或登入會員，即可免費解鎖完整功能！")
+
+    # --- 右側：登入/註冊卡片 ---
+    with col2:
+        # 加上 border=True 讓它看起來像一張浮起來的卡片
+        with st.container(border=True):
+            st.header("🔐 會員登入")
+            
+            tab1, tab2 = st.tabs(["登入", "註冊新帳號"])
+            
+            with tab1:
+                st.write("") # 空一行
+                u = st.text_input("帳號 (使用者名稱)", key="u_login")
+                p = st.text_input("密碼", type="password", key="p_login")
+                
+                st.write("") 
+                # primary button 通常是紅/橘色系 (視主題而定)
+                if st.button("登入系統", type="primary", use_container_width=True):
+                    if u in st.session_state.users_db and st.session_state.users_db[u] == p:
+                        st.session_state.logged_in = True
+                        st.session_state.username = u
+                        st.session_state.show_register_hint = False
+                        st.rerun()
+                    else:
+                        st.error("帳號或密碼錯誤 (admin/8888)")
+                        
+            with tab2:
+                st.write("")
+                new_u = st.text_input("設定帳號")
+                email = st.text_input("Email (限 Gmail)", placeholder="name@gmail.com")
+                new_p = st.text_input("設定密碼", type="password")
+                
+                st.write("")
+                if st.button("立即註冊", use_container_width=True):
+                    if not email.endswith("@gmail.com"): st.error("限 Gmail 註冊")
+                    elif new_u and new_p:
+                        st.session_state.users_db[new_u] = new_p
+                        st.success("註冊成功！請切換到「登入」分頁。")
+                    else: st.error("請填寫完整資訊")
 
 def show_member_app():
-    """會員 App"""
+    """會員 App (保持之前的 V7 版本)"""
     c1, c2 = st.columns([3, 1])
     with c1: st.markdown(f"**Hi, {st.session_state.username}** 👋")
     with c2:
@@ -157,25 +173,21 @@ def show_member_app():
             
     tab_pds, tab_card, tab_journal = st.tabs(["📊 運算", "🔮 抽卡", "📔 日記"])
     
-    # [Tab 1] PDS 運算
     with tab_pds:
         with st.container(border=True):
-            st.caption("輸入資料")
             bd = st.date_input("出生年月日", value=datetime.date(1983, 9, 8), 
-                             min_value=datetime.date(1900, 1, 1), 
-                             max_value=datetime.date.today())
+                             min_value=datetime.date(1900, 1, 1), max_value=datetime.date.today())
             run_btn = st.button("🚀 開始分析", type="primary", use_container_width=True)
             
         if run_btn:
             data = calculate_pds_full_codes(bd)
             py, cy = calculate_personal_year(bd)
-            lp_text = LIFE_PATH_MEANINGS.get(data['O'], f"{data['O']}號人")
             
             st.markdown("---")
             c1, c2 = st.columns(2)
             c1.metric("主命數", f"{data['O']} 號")
             c2.metric("流年運勢", f"{py}", delta=f"{cy}年")
-            st.info(f"💡 {lp_text}")
+            st.info(f"💡 {LIFE_PATH_MEANINGS.get(data['O'], '')}")
             
             st.markdown("#### 📍 人生戰略地圖")
             with st.container(border=True):
@@ -191,8 +203,8 @@ def show_member_app():
                 for i, code in enumerate(data['codes']['middle']):
                     if i == 0: cols[i].error(code)
                     else: cols[i].code(code)
-                anchor = data['codes']['middle'][0]
-                if anchor in PDS_CODES: st.success(f"🚩 **坐鎮碼 {anchor}**: {PDS_CODES[anchor]}")
+                if data['codes']['middle'][0] in PDS_CODES:
+                    st.success(f"🚩 **坐鎮碼**: {PDS_CODES[data['codes']['middle'][0]]}")
 
             with st.container(border=True):
                 st.markdown("**🍂 晚年**")
@@ -201,47 +213,27 @@ def show_member_app():
                 for code in data['codes']['late']:
                     if code in PDS_CODES: st.caption(f"**{code}**: {PDS_CODES[code]}")
 
-    # [Tab 2] 靈性抽卡 (每日限定版)
     with tab_card:
         st.markdown("<br>", unsafe_allow_html=True)
-        
-        # 1. 先檢查資料庫，今天有沒有抽過？
         today_record = get_today_draw(st.session_state.username)
-        
         if today_record:
-            # A. 如果抽過了 -> 顯示舊結果
-            title, poem, desc = today_record # 解開資料
-            st.warning("⚠️ 你今天已經抽過牌囉！請珍惜宇宙給你的指引，明天再來。")
-            
+            st.warning("⚠️ 你今天已經抽過牌囉！")
             with st.container(border=True):
-                st.markdown(f"<h3 style='text-align: center;'>{title}</h3>", unsafe_allow_html=True)
-                st.caption(f"📅 抽取時間：{datetime.date.today()}")
-                st.markdown("---")
-                st.info(f"📜 {poem}")
-                st.success(f"💡 {desc}")
-                
+                st.markdown(f"<h3 style='text-align: center;'>{today_record[0]}</h3>", unsafe_allow_html=True)
+                st.info(f"📜 {today_record[1]}")
+                st.success(f"💡 {today_record[2]}")
         else:
-            # B. 如果還沒抽 -> 顯示按鈕
             if st.button("🔮 連結宇宙・抽取今日指引", type="primary", use_container_width=True):
-                # 抽牌
                 card = random.choice(DIVINATION_CARDS)
-                
-                # 存入資料庫！ (這步最關鍵)
                 save_today_draw(st.session_state.username, card)
-                
-                # 顯示結果
-                st.balloons() # 放個氣球慶祝
+                st.balloons()
                 with st.container(border=True):
                     st.markdown(f"<h3 style='text-align: center;'>{card['title']}</h3>", unsafe_allow_html=True)
-                    st.markdown("---")
                     st.info(f"📜 {card['poem']}")
                     st.success(f"💡 {card['desc']}")
-                
-                # 強制刷新頁面，讓按鈕消失，變成「已抽過」狀態
                 time.sleep(3)
                 st.rerun()
 
-    # [Tab 3] 心靈日記
     with tab_journal:
         with st.form("j_form"):
             txt = st.text_area("寫下此刻的覺察...", height=100)
@@ -250,8 +242,6 @@ def show_member_app():
                 st.success("已記錄")
                 time.sleep(0.5)
                 st.rerun()
-        
-        st.markdown("### 🗓️ 過往紀錄")
         history = get_journals(st.session_state.username)
         if history:
             for date, content in history:
