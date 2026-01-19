@@ -151,7 +151,7 @@ def show_login_page():
     """首頁設計 (Split Screen Layout)"""
     col1, col2 = st.columns([1.5, 1], gap="large")
     with col1:
-        st.markdown("# 👁️ 歡迎來到喬鈞心學")
+        st.markdown("# ❤️‍🔥 歡迎來到喬鈞心學")
         st.markdown("### 探索你到底是什麼模樣，解開生命的原始設定。")
         st.image("https://images.unsplash.com/photo-1517842645767-c639042777db?q=80&w=2670&auto=format&fit=crop", 
                  caption="數字是世界通用的語言。", use_container_width=True)
