@@ -5,6 +5,20 @@ import time
 import random
 from supabase import create_client, Client
 
+# --- 1. 基礎設定與導入 ---
+st.set_page_config(page_title="喬鈞心學", page_icon="🔯", layout="wide")
+
+# 隱藏 Streamlit 選單
+hide_st_style = """
+    <style>
+        [data-testid="stToolbar"] {visibility: hidden !important; display: none !important;}
+        #MainMenu {visibility: hidden !important; display: none !important;}
+        header {visibility: hidden !important;}
+        footer {visibility: hidden !important; display: none !important;}
+    </style>
+"""
+st.markdown(hide_st_style, unsafe_allow_html=True)
+
 # 匯入規則
 try:
     from databases.pds_rules import PDS_CODES, LIFE_PATH_MEANINGS, PERSONAL_YEAR_MEANINGS
@@ -13,29 +27,57 @@ except ImportError:
     st.error("⚠️ 找不到 databases 資料夾！請檢查 GitHub 檔案結構。")
     st.stop()
 
-# --- 資料庫管家 (Supabase 版) ---
-
-# --- 資料庫管家 (通用版：支援 Streamlit Cloud 與 Render) ---
+# --- 2. 資料庫連線 (Supabase) ---
 @st.cache_resource
 def init_connection():
     try:
-        # 1. 優先嘗試讀取 Streamlit 專屬 Secrets (本地或 Streamlit Cloud)
         url = st.secrets["supabase"]["url"]
         key = st.secrets["supabase"]["key"]
     except:
-        # 2. 如果失敗，改為讀取系統環境變數 (Render 適用)
-        # 這裡使用 os.environ.get 來抓取我們等一下在 Render 設定的變數
         url = os.environ.get("SUPABASE_URL")
         key = os.environ.get("SUPABASE_KEY")
     
     if not url or not key:
-        st.error("❌ 找不到資料庫連線資訊，請檢查 Secrets 或環境變數設定。")
+        st.error("❌ 找不到資料庫連線資訊。")
         st.stop()
-        
     return create_client(url, key)
+
 supabase = init_connection()
 
-# 2. 存日記
+# --- 3. 會員系統功能 (新功能!) ---
+
+def register_user(username, password, email):
+    """註冊新用戶"""
+    # 1. 先檢查帳號是否已存在
+    try:
+        check = supabase.table("users").select("username").eq("username", username).execute()
+        if check.data:
+            return False, "❌ 這個帳號已經有人用了，請換一個！"
+    except Exception as e:
+        return False, f"連線檢查失敗: {e}"
+
+    # 2. 建立新帳號
+    data = {"username": username, "password": password, "email": email}
+    try:
+        supabase.table("users").insert(data).execute()
+        return True, "✅ 註冊成功！請切換到「登入」頁籤登入。"
+    except Exception as e:
+        return False, f"註冊失敗: {e}"
+
+def login_user(username, password):
+    """驗證登入"""
+    try:
+        # 去資料庫找：有沒有這個帳號 且 密碼也對 的人？
+        response = supabase.table("users").select("*").eq("username", username).eq("password", password).execute()
+        if response.data:
+            return True # 找到了！登入成功
+        else:
+            return False # 沒找到，帳密錯誤
+    except Exception:
+        return False
+
+# --- 4. 業務功能 (日記與抽牌) ---
+
 def save_journal(username, content):
     date_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
     data = {"username": username, "content": content, "date_str": date_str}
@@ -44,16 +86,13 @@ def save_journal(username, content):
     except Exception as e:
         st.error(f"儲存失敗: {e}")
 
-# 3. 讀日記
 def get_journals(username):
     try:
         response = supabase.table("journals").select("*").eq("username", username).order("created_at", desc=True).execute()
         return [(item["date_str"], item["content"]) for item in response.data]
-    except Exception as e:
-        st.error(f"讀取失敗: {e}")
+    except:
         return []
 
-# 4. 檢查今日抽牌
 def get_today_draw(username):
     today_str = datetime.date.today().strftime("%Y-%m-%d")
     try:
@@ -62,23 +101,16 @@ def get_today_draw(username):
             item = response.data[0]
             return (item["title"], item["poem"], item["desc"])
         return None
-    except Exception:
-        return None # 如果表格還沒建，先略過錯誤
+    except:
+        return None
 
-# 5. 存今日抽牌
 def save_today_draw(username, card):
     today_str = datetime.date.today().strftime("%Y-%m-%d")
-    data = {
-        "username": username, 
-        "draw_date": today_str, 
-        "title": card['title'], 
-        "poem": card['poem'], 
-        "desc": card['desc']
-    }
+    data = {"username": username, "draw_date": today_str, "title": card['title'], "poem": card['poem'], "desc": card['desc']}
     try:
         supabase.table("daily_draws").insert(data).execute()
-    except Exception as e:
-        pass # 暫時忽略錯誤
+    except:
+        pass
 
 # --- PDS 計算核心 (保持不變) ---
 def get_digit_sum(n):
@@ -110,48 +142,17 @@ def calculate_personal_year(birthdate):
     total = datetime.date.today().year + birthdate.month + birthdate.day
     return get_digit_sum(total), datetime.date.today().year
 
-# --- 介面設定 ---
-st.set_page_config(page_title="喬鈞心學", page_icon="❤️‍🔥", layout="wide")
-
-# --- 隱藏 Streamlit 預設選單、頁尾與頂部導覽列 (強力版) ---
-hide_st_style = """
-    <style>
-        /* 隱藏頂部工具列 (包含三個點點) */
-        [data-testid="stToolbar"] {
-            visibility: hidden !important;
-            display: none !important;
-        }
-        /* 隱藏舊版選單 ID (以防萬一) */
-        #MainMenu {
-            visibility: hidden !important;
-            display: none !important;
-        }
-        /* 隱藏頁首裝飾條 */
-        header {
-            visibility: hidden !important;
-        }
-        /* 隱藏頁尾 "Made with Streamlit" */
-        footer {
-            visibility: hidden !important;
-            display: none !important;
-        }
-    </style>
-"""
-st.markdown(hide_st_style, unsafe_allow_html=True)
-
+# --- Session 初始化 ---
 if 'logged_in' not in st.session_state: st.session_state.logged_in = False
 if 'username' not in st.session_state: st.session_state.username = ""
-# 這裡還是用簡單的字典存帳號，如果要改用 Supabase 存帳號也可以，但先不急
-if 'users_db' not in st.session_state: st.session_state.users_db = {"admin": "8888"}
 if 'show_register_hint' not in st.session_state: st.session_state.show_register_hint = False
 
 # --- 頁面視圖 ---
 
 def show_login_page():
-    """首頁設計 (Split Screen Layout)"""
     col1, col2 = st.columns([1.5, 1], gap="large")
     with col1:
-        st.markdown("# ❤️‍🔥 歡迎來到喬鈞心學")
+        st.markdown("# 👁️ 歡迎來到喬鈞心學")
         st.markdown("### 探索你到底是什麼模樣，解開生命的原始設定。")
         st.image("https://images.unsplash.com/photo-1517842645767-c639042777db?q=80&w=2670&auto=format&fit=crop", 
                  caption="數字是世界通用的語言。", use_container_width=True)
@@ -165,33 +166,46 @@ def show_login_page():
 
     with col2:
         with st.container(border=True):
-            st.header("🔐 會員登入")
+            st.header("🔐 會員專區")
             tab1, tab2 = st.tabs(["登入", "註冊新帳號"])
+            
+            # --- 登入區塊 ---
             with tab1:
                 st.write("")
-                u = st.text_input("帳號 (使用者名稱)", key="u_login")
+                u = st.text_input("帳號", key="u_login")
                 p = st.text_input("密碼", type="password", key="p_login")
                 st.write("") 
                 if st.button("登入系統", type="primary", use_container_width=True):
-                    if u in st.session_state.users_db and st.session_state.users_db[u] == p:
+                    # 這裡呼叫新的 login_user 函式去查資料庫
+                    if login_user(u, p):
                         st.session_state.logged_in = True
                         st.session_state.username = u
                         st.session_state.show_register_hint = False
+                        st.success(f"歡迎回來，{u}！")
+                        time.sleep(1)
                         st.rerun()
                     else:
-                        st.error("帳號或密碼錯誤 (admin/8888)")
+                        st.error("帳號不存在或密碼錯誤")
+            
+            # --- 註冊區塊 ---
             with tab2:
                 st.write("")
-                new_u = st.text_input("設定帳號")
+                new_u = st.text_input("設定帳號 (ID)")
                 email = st.text_input("Email (限 Gmail)", placeholder="name@gmail.com")
                 new_p = st.text_input("設定密碼", type="password")
                 st.write("")
                 if st.button("立即註冊", use_container_width=True):
-                    if not email.endswith("@gmail.com"): st.error("限 Gmail 註冊")
-                    elif new_u and new_p:
-                        st.session_state.users_db[new_u] = new_p
-                        st.success("註冊成功！請切換到「登入」分頁。")
-                    else: st.error("請填寫完整資訊")
+                    if not email.endswith("@gmail.com"):
+                        st.error("請使用 Gmail 信箱註冊")
+                    elif not new_u or not new_p:
+                        st.error("請填寫完整資訊")
+                    else:
+                        # 呼叫新的 register_user 函式寫入資料庫
+                        success, msg = register_user(new_u, new_p, email)
+                        if success:
+                            st.success(msg)
+                        else:
+                            st.error(msg)
 
 def show_member_app():
     c1, c2 = st.columns([3, 1])
@@ -199,6 +213,7 @@ def show_member_app():
     with c2:
         if st.button("登出", key="logout", use_container_width=True):
             st.session_state.logged_in = False
+            st.session_state.username = ""
             st.rerun()
             
     tab_pds, tab_card, tab_journal = st.tabs(["📊 運算", "🔮 抽卡", "📔 日記"])
