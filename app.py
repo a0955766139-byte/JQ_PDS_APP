@@ -111,7 +111,7 @@ def calculate_personal_year(birthdate):
     return get_digit_sum(total), datetime.date.today().year
 
 # --- 介面設定 ---
-st.set_page_config(page_title="喬鈞心學", page_icon="👁️", layout="wide")
+st.set_page_config(page_title="喬鈞心學", page_icon="❤️‍🔥", layout="wide")
 
 # --- 隱藏 Streamlit 預設選單、頁尾與頂部導覽列 (強力版) ---
 hide_st_style = """
