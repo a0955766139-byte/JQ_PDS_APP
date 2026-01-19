@@ -216,7 +216,7 @@ def show_member_app():
             st.session_state.username = ""
             st.rerun()
             
-    tab_pds, tab_card, tab_journal = st.tabs(["📊 運算", "🔮 抽卡", "📔 日記"])
+    tab_pds, tab_card, tab_journal = st.tabs(["🧬 運算", "🔮 抽卡", "📔 日記", "📜 讀者專屬", "🛒 商城"])
     
     with tab_pds:
         with st.container(border=True):
