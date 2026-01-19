@@ -216,7 +216,7 @@ def show_member_app():
             st.session_state.username = ""
             st.rerun()
             
-    tab_pds, tab_card, tab_journal = st.tabs(["🧬 運算", "🔮 抽卡", "📔 日記", "📜 讀者專屬", "🛒 商城"])
+    tab_pds, tab_card, tab_journal, tab_reader, tab_shop = st.tabs(["🧬 運算", "🔮 抽卡", "📔 日記", "📜 讀者專屬", "🛒 商城"])
     
     with tab_pds:
         with st.container(border=True):
@@ -296,6 +296,16 @@ def show_member_app():
                     st.markdown(content)
         else:
             st.caption("尚無紀錄")
+
+    with tab_reader:
+        st.info("🚧 讀者專屬功能建置中... (這裡將連結你的書本內容)")
+        st.image("https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c", use_container_width=True)
+
+    with tab_shop:
+        st.success("🚧 商城系統籌備中... (這裡將販售課程與周邊)")
+        c1, c2 = st.columns(2)
+        c1.metric("預計上架商品", "12 件")
+        c2.metric("目前優惠", "早鳥 8 折")
 
 if st.session_state.logged_in:
     show_member_app()
