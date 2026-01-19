@@ -112,14 +112,30 @@ def calculate_personal_year(birthdate):
 # --- 介面設定 ---
 st.set_page_config(page_title="喬鈞心學", page_icon="👁️", layout="wide")
 
-# --- 隱藏 Streamlit 預設選單與頁尾 ---
+# --- 隱藏 Streamlit 預設選單、頁尾與頂部導覽列 (強力版) ---
 hide_st_style = """
-            <style>
-            #MainMenu {visibility: hidden;}
-            header {visibility: hidden;}
-            footer {visibility: hidden;}
-            </style>
-            """
+    <style>
+        /* 隱藏頂部工具列 (包含三個點點) */
+        [data-testid="stToolbar"] {
+            visibility: hidden !important;
+            display: none !important;
+        }
+        /* 隱藏舊版選單 ID (以防萬一) */
+        #MainMenu {
+            visibility: hidden !important;
+            display: none !important;
+        }
+        /* 隱藏頁首裝飾條 */
+        header {
+            visibility: hidden !important;
+        }
+        /* 隱藏頁尾 "Made with Streamlit" */
+        footer {
+            visibility: hidden !important;
+            display: none !important;
+        }
+    </style>
+"""
 st.markdown(hide_st_style, unsafe_allow_html=True)
 
 if 'logged_in' not in st.session_state: st.session_state.logged_in = False
