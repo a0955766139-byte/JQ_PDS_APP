@@ -112,12 +112,16 @@ def login_user(username, password):
 
 # --- 4. 業務功能 (日記與抽牌) ---
 
+# --- 修正版：強制使用台灣時間 (UTC+8) 並顯示秒數 ---
 def save_journal(username, content):
-    # 1. 設定台灣時區 (UTC+8)
+    # 1. 定義台灣時區 (UTC+8)
     tz_taiwan = datetime.timezone(datetime.timedelta(hours=8))
-    # 2. 取得現在的台灣時間
+    
+    # 2. 取得「現在」的台灣時間
     current_time = datetime.datetime.now(tz_taiwan)
-    # 3. 格式化顯示 (年-月-日 時:分:秒) -> 加上 :%S 顯示秒數
+    
+    # 3. 格式化成字串 (年-月-日 時:分:秒)
+    # 注意：原本只有 %H:%M，這裡加上 :%S 顯示秒數，這樣就不會看起來都一樣了
     date_str = current_time.strftime("%Y-%m-%d %H:%M:%S")
     
     data = {"username": username, "content": content, "date_str": date_str}
@@ -125,7 +129,7 @@ def save_journal(username, content):
         supabase.table("journals").insert(data).execute()
     except Exception as e:
         st.error(f"儲存失敗: {e}")
-        
+
 def get_journals(username):
     try:
         response = supabase.table("journals").select("*").eq("username", username).order("created_at", desc=True).execute()
@@ -196,7 +200,7 @@ def show_login_page():
         st.markdown("### 探索你到底是什麼模樣，解開生命的原始設定。")
         st.image("https://images.unsplash.com/photo-1517842645767-c639042777db?q=80&w=2670&auto=format&fit=crop", 
                  caption="數字是世界通用的語言。", use_container_width=True)
-        st.markdown("### 什麼是數字心理學？")
+        st.markdown("### 什麼是現代數字心理學？")
         st.info("這不只是算命，而是一套結合了畢達哥拉斯數學與現代心理學的行為分析系統。幫助你看見天賦、理解挑戰、規劃未來。")
         st.markdown("<br>", unsafe_allow_html=True)
         if st.button("🔮 感到迷惘？先抽張牌試試 (每日指引)", use_container_width=True):
@@ -319,23 +323,67 @@ def show_member_app():
                 st.rerun()
 
     with tab_journal:
-        with st.form("j_form"):
-            txt = st.text_area("寫下此刻的覺察...", height=100)
-            if st.form_submit_button("💾 儲存日記", use_container_width=True) and txt:
-                save_journal(st.session_state.username, txt)
-                st.success("已記錄 (雲端保存)")
-                time.sleep(0.5)
-                st.rerun()
+        # --- 1. 時區設定 (這就是解決怪怪感覺的關鍵！) ---
+        # 這裡建立一個簡單的字典，讓使用者選地區，而不是選複雜的數字
+        timezone_options = {
+            "🇹🇼 台灣/中國 (UTC+8)": 8,
+            "🇯🇵 日本 (UTC+9)": 9,
+            "🇺🇸 美國西部 (洛杉磯) (UTC-7)": -7, # 夏令時間需注意，暫定-7
+            "🇺🇸 美國東部 (紐約) (UTC-4)": -4,
+            "🇪🇺 歐洲 (巴黎/柏林) (UTC+2)": 2,
+            "🇬🇧 英國 (倫敦) (UTC+1)": 1,
+        }
         
-        # 讀取日記 (從 Supabase)
+        c_tz, c_null = st.columns([2, 3]) # 排版用，讓選單短一點
+        with c_tz:
+            selected_zone = st.selectbox("🌍 設定你的所在地時間", options=list(timezone_options.keys()), index=0)
+            offset_hours = timezone_options[selected_zone]
+
+        st.divider() # 畫一條線區隔設定
+
+        # --- 2. 取得該時區的「當下時間」 ---
+        user_tz = datetime.timezone(datetime.timedelta(hours=offset_hours))
+        now_local = datetime.datetime.now(user_tz)
+
+        # --- 3. 日記輸入區 ---
+        with st.form("j_form"):
+            # 這裡顯示的時間，已經是經過時區校正的「當地時間」了
+            # 讓使用者可以微調 (例如補寫昨天的)，但預設值是正確的當下
+            col1, col2 = st.columns(2)
+            pick_date = col1.date_input("📅 日期", value=now_local.date())
+            pick_time = col2.time_input("⏰ 時間", value=now_local.time())
+            
+            txt = st.text_area("寫下此刻的覺察...", height=150, placeholder="今天發生了什麼事？心情如何？")
+            
+            if st.form_submit_button("💾 儲存日記", use_container_width=True):
+                if not txt:
+                    st.warning("⚠️ 日記內容不能空白喔！")
+                else:
+                    # 組合最終時間
+                    final_dt = datetime.datetime.combine(pick_date, pick_time)
+                    # 轉成字串存入資料庫
+                    date_str = final_dt.strftime("%Y-%m-%d %H:%M:%S")
+                    
+                    data = {"username": st.session_state.username, "content": txt, "date_str": date_str}
+                    try:
+                        supabase.table("journals").insert(data).execute()
+                        st.success(f"✅ 已記錄！時間戳記：{date_str} ({selected_zone})")
+                        time.sleep(1)
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"儲存失敗: {e}")
+        
+        # --- 4. 歷史紀錄顯示 ---
+        st.markdown("### 📔 歷史紀錄")
         history = get_journals(st.session_state.username)
         if history:
             for date_str, content in history:
                 with st.container(border=True):
-                    st.caption(f"📅 {date_str}")
+                    # 這裡稍微美化一下顯示
+                    st.caption(f"📅 {date_str}") 
                     st.markdown(content)
         else:
-            st.caption("尚無紀錄")
+            st.info("目前還沒有日記，寫下第一篇吧！")
 
     with tab_reader:
         st.info("🚧 讀者專屬功能建置中... (這裡將連結你的書本內容)")
