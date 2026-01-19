@@ -17,7 +17,41 @@ hide_st_style = """
         footer {visibility: hidden !important; display: none !important;}
     </style>
 """
-st.markdown(hide_st_style, unsafe_allow_html=True)
+# --- 介面優化：隱藏選單 + 強化分頁按鈕樣式 ---
+st.markdown("""
+    <style>
+        /* 1. 隱藏 Streamlit 預設選單 (漢堡與浮水印) */
+        [data-testid="stToolbar"] {visibility: hidden !important; display: none !important;}
+        #MainMenu {visibility: hidden !important; display: none !important;}
+        header {visibility: hidden !important;}
+        footer {visibility: hidden !important; display: none !important;}
+        
+        /* 2. 針對分頁按鈕 (Tab) 進行整形 */
+        button[data-baseweb="tab"] {
+            font-size: 24px !important;    /* 🔥 字體放大 (原本約 16px) */
+            font-weight: 700 !important;   /* 🔥 字體加粗 */
+            background-color: #f0f2f6;     /* 沒選中時的背景色：淺灰 */
+            border-radius: 10px 10px 0px 0px; /* 圓角設計，像文件夾 */
+            border: 1px solid #E0E0E0;     /* 淡淡的邊框 */
+            margin-right: 8px;             /* 按鈕之間的間距 */
+            padding: 10px 20px;            /* 按鈕留白，讓它胖一點 */
+            transition: all 0.3s;          /* 點擊時的動畫效果 */
+        }
+        
+        /* 3. 當分頁「被選中」時的樣子 */
+        button[data-baseweb="tab"][aria-selected="true"] {
+            background-color: #FF4B4B !important; /* 🔥 選中變成紅色 (配合你的主題) */
+            color: white !important;              /* 字變成白色 */
+            border: none;                         /* 拿掉邊框 */
+            box-shadow: 0px 4px 10px rgba(0,0,0,0.1); /* 加一點陰影，浮起來的感覺 */
+        }
+        
+        /* 強制修正選中時內層文字顏色 (確保是白色) */
+        button[data-baseweb="tab"][aria-selected="true"] p {
+            color: white !important;
+        }
+    </style>
+""", unsafe_allow_html=True)
 
 # 匯入規則
 try:
