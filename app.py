@@ -279,7 +279,7 @@ def show_member_app():
             st.session_state.username = ""
             st.rerun()
             
-    tab_pds, tab_card, tab_journal, tab_reader, tab_shop = st.tabs(["🧬 天賦運勢", "🔮 抽卡", "📔 日記", "📜 讀者專屬", "🛒 商城"])
+    tab_pds, tab_card, tab_journal, tab_reader, tab_shop = st.tabs(["🧬 天賦運勢", "🔮 每日指引卡", "📔 日記", "📜 讀者專屬", "🛒 商城"])
     
     with tab_pds:
         with st.container(border=True):
