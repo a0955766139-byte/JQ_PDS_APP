@@ -112,6 +112,16 @@ def calculate_personal_year(birthdate):
 # --- 介面設定 ---
 st.set_page_config(page_title="喬鈞心學", page_icon="👁️", layout="wide")
 
+# --- 隱藏 Streamlit 預設選單與頁尾 ---
+hide_st_style = """
+            <style>
+            #MainMenu {visibility: hidden;}
+            header {visibility: hidden;}
+            footer {visibility: hidden;}
+            </style>
+            """
+st.markdown(hide_st_style, unsafe_allow_html=True)
+
 if 'logged_in' not in st.session_state: st.session_state.logged_in = False
 if 'username' not in st.session_state: st.session_state.username = ""
 # 這裡還是用簡單的字典存帳號，如果要改用 Supabase 存帳號也可以，但先不急
