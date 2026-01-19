@@ -33,6 +33,7 @@ def init_connection():
         st.stop()
         
     return create_client(url, key)
+supabase = init_connection()
 
 # 2. 存日記
 def save_journal(username, content):
