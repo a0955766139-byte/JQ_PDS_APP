@@ -113,13 +113,19 @@ def login_user(username, password):
 # --- 4. 業務功能 (日記與抽牌) ---
 
 def save_journal(username, content):
-    date_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
+    # 1. 設定台灣時區 (UTC+8)
+    tz_taiwan = datetime.timezone(datetime.timedelta(hours=8))
+    # 2. 取得現在的台灣時間
+    current_time = datetime.datetime.now(tz_taiwan)
+    # 3. 格式化顯示 (年-月-日 時:分:秒) -> 加上 :%S 顯示秒數
+    date_str = current_time.strftime("%Y-%m-%d %H:%M:%S")
+    
     data = {"username": username, "content": content, "date_str": date_str}
     try:
         supabase.table("journals").insert(data).execute()
     except Exception as e:
         st.error(f"儲存失敗: {e}")
-
+        
 def get_journals(username):
     try:
         response = supabase.table("journals").select("*").eq("username", username).order("created_at", desc=True).execute()
