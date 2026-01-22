@@ -342,67 +342,77 @@ def show_member_app():
                 st.rerun()
 
     with tab_journal:
-        # --- 1. 時區設定 (這就是解決怪怪感覺的關鍵！) ---
-        # 這裡建立一個簡單的字典，讓使用者選地區，而不是選複雜的數字
-        timezone_options = {
-            "🇹🇼 台灣/中國 (UTC+8)": 8,
-            "🇯🇵 日本 (UTC+9)": 9,
-            "🇺🇸 美國西部 (洛杉磯) (UTC-7)": -7, # 夏令時間需注意，暫定-7
-            "🇺🇸 美國東部 (紐約) (UTC-4)": -4,
-            "🇪🇺 歐洲 (巴黎/柏林) (UTC+2)": 2,
-            "🇬🇧 英國 (倫敦) (UTC+1)": 1,
-        }
+        # --- V5 優化：沈浸式日記體驗 ---
         
-        c_tz, c_null = st.columns([2, 3]) # 排版用，讓選單短一點
-        with c_tz:
-            selected_zone = st.selectbox("🌍 設定你的所在地時間", options=list(timezone_options.keys()), index=0)
+        # 1. 標題區：給予一點儀式感
+        st.markdown("#### 📔 此刻，與自己對話")
+        
+        # 2. 將「技術性設定」藏起來 (Expander)
+        # 只有當使用者想「補寫」或「人在國外」時，才需要點開這裡
+        with st.expander("⚙️ 進階設定：調整日期、時間或時區 (點擊展開)", expanded=False):
+            timezone_options = {
+                "🇹🇼 台灣/中國 (UTC+8)": 8,
+                "🇯🇵 日本 (UTC+9)": 9,
+                "🇺🇸 美國西部 (洛杉磯) (UTC-7)": -7,
+                "🇺🇸 美國東部 (紐約) (UTC-4)": -4,
+            }
+            c_tz, c_date, c_time = st.columns([2, 1.5, 1.5])
+            with c_tz:
+                selected_zone = st.selectbox("🌍 時區", options=list(timezone_options.keys()), index=0)
+            
+            # 計算時間
             offset_hours = timezone_options[selected_zone]
-
-        st.divider() # 畫一條線區隔設定
-
-        # --- 2. 取得該時區的「當下時間」 ---
-        user_tz = datetime.timezone(datetime.timedelta(hours=offset_hours))
-        now_local = datetime.datetime.now(user_tz)
-
-        # --- 3. 日記輸入區 ---
-        with st.form("j_form"):
-            # 這裡顯示的時間，已經是經過時區校正的「當地時間」了
-            # 讓使用者可以微調 (例如補寫昨天的)，但預設值是正確的當下
-            col1, col2 = st.columns(2)
-            pick_date = col1.date_input("📅 日期", value=now_local.date())
-            pick_time = col2.time_input("⏰ 時間", value=now_local.time())
+            user_tz = datetime.timezone(datetime.timedelta(hours=offset_hours))
+            now_local = datetime.datetime.now(user_tz)
             
-            txt = st.text_area("寫下此刻的覺察...", height=150, placeholder="今天發生了什麼事？心情如何？")
+            with c_date:
+                pick_date = st.date_input("📅 日期", value=now_local.date())
+            with c_time:
+                pick_time = st.time_input("⏰ 時間", value=now_local.time())
+
+        # 3. 核心書寫區 (乾淨、無干擾)
+        # 如果使用者沒展開上面的設定，這裡預設就是當下的台灣時間
+        if 'pick_date' not in locals(): # 防呆
+            pick_date = datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=8))).date()
+            pick_time = datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=8))).time()
+            selected_zone = "🇹🇼 台灣/中國 (UTC+8)"
+
+        with st.form("j_form", clear_on_submit=True): # clear_on_submit=True 讓寫完後自動清空
+            txt = st.text_area("✍️", height=200, placeholder="親愛的，今天發生了什麼事？你的感覺如何？...\n(這裡是一個安全的空間，請放心書寫)")
             
-            if st.form_submit_button("💾 儲存日記", use_container_width=True):
+            # 透過 columns 讓按鈕縮小一點，靠右一點
+            c_null, c_btn = st.columns([3, 1])
+            with c_btn:
+                submitted = st.form_submit_button("💾 收藏這份記憶", use_container_width=True)
+            
+            if submitted:
                 if not txt:
-                    st.warning("⚠️ 日記內容不能空白喔！")
+                    st.warning("⚠️ 內容是空的，試著寫下一個字也好。")
                 else:
-                    # 組合最終時間
                     final_dt = datetime.datetime.combine(pick_date, pick_time)
-                    # 轉成字串存入資料庫
                     date_str = final_dt.strftime("%Y-%m-%d %H:%M:%S")
                     
                     data = {"username": st.session_state.username, "content": txt, "date_str": date_str}
                     try:
                         supabase.table("journals").insert(data).execute()
-                        st.success(f"✅ 已記錄！時間戳記：{date_str} ({selected_zone})")
+                        st.success(f"✅ 已保存！ ({date_str})")
                         time.sleep(1)
                         st.rerun()
                     except Exception as e:
                         st.error(f"儲存失敗: {e}")
         
-        # --- 4. 歷史紀錄顯示 ---
-        st.markdown("### 📔 歷史紀錄")
+        # 4. 歷史紀錄 (優化顯示)
+        st.divider()
+        st.markdown("##### 🕰️ 回憶長廊")
         history = get_journals(st.session_state.username)
         if history:
             for date_str, content in history:
-                with st.container(border=True):
-                    # 這裡稍微美化一下顯示
-                    st.caption(f"📅 {date_str}") 
+                # 使用 expander 讓長篇日記預設收合，畫面更清爽
+                with st.expander(f"📅 {date_str} - {content[:10]}...", expanded=False):
                     st.markdown(content)
+                    st.caption(f"記錄於: {date_str}")
         else:
-            st.info("目前還沒有日記，寫下第一篇吧！")
+            st.caption("這裡目前一片空白，等待你的第一筆紀錄...")
 
     with tab_reader:
         st.info("🚧 讀者專屬功能建置中... (這裡將連結你的書本內容)")
