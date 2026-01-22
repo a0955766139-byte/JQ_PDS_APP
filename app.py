@@ -11,29 +11,29 @@ from supabase import create_client, Client
 # --- 1. 基礎設定 (這行永遠要是第一行) ---
 st.set_page_config(page_title="喬鈞心學", page_icon="❤️‍🔥", layout="wide")
 
-# --- 🔥🔥🔥 關鍵修復：Session 初始化搬到這裡！ 🔥🔥🔥 ---
+# --- 🔥 Session 初始化 (防報錯金鐘罩) 🔥 ---
 if 'logged_in' not in st.session_state:
     st.session_state.logged_in = False
 if 'username' not in st.session_state:
     st.session_state.username = ""
 if 'show_register_hint' not in st.session_state:
     st.session_state.show_register_hint = False
-# 寄信驗證相關變數
+# 寄信驗證相關
 if 'otp_code' not in st.session_state: st.session_state.otp_code = None
 if 'otp_email' not in st.session_state: st.session_state.otp_email = None
 if 'last_send_time' not in st.session_state: st.session_state.last_send_time = 0
 if 'is_verified' not in st.session_state: st.session_state.is_verified = False
+# 登入頁面檢視模式 ('login' 或 'recovery')
+if 'login_view' not in st.session_state: st.session_state.login_view = 'login'
 
-# --- 2. 介面優化 (隱藏選單 & Loading 優化) ---
+# --- 2. 介面優化 (CSS) ---
 st.markdown("""
     <style>
         [data-testid="stToolbar"] {visibility: hidden !important; display: none !important;}
         [data-testid="stHeader"] {visibility: hidden !important;}
         footer {visibility: hidden !important; display: none !important;}
         
-        .stApp {
-            margin-top: -80px; 
-        }
+        .stApp { margin-top: -80px; }
         
         div[data-baseweb="tab-list"] {
             gap: 0px; 
@@ -78,7 +78,7 @@ except ImportError:
     st.error("⚠️ 找不到 databases 資料夾！請檢查 GitHub 檔案結構。")
     st.stop()
 
-# --- 3. 資料庫連線 (加入載入動畫) ---
+# --- 3. 資料庫連線 (Loading 動畫) ---
 @st.cache_resource
 def init_connection():
     try:
@@ -93,15 +93,13 @@ def init_connection():
         st.stop()
     return create_client(url, key)
 
-# 🔥 優化體驗：加上轉圈圈動畫 🔥
 with st.spinner('🔮 正在連結宇宙資料庫...'):
     supabase = init_connection()
-    time.sleep(0.5) 
+    time.sleep(0.5)
 
-# --- 4. 業務邏輯與計算函式 (⚠️ 剛剛缺少的部份補在這裡) ---
+# --- 4. 業務邏輯函式 (完整版) ---
 
 def get_taiwan_date_str():
-    """強制取得台灣目前的日期字串 (YYYY-MM-DD)"""
     tz = datetime.timezone(datetime.timedelta(hours=8))
     return datetime.datetime.now(tz).strftime("%Y-%m-%d")
 
@@ -131,7 +129,6 @@ def save_today_draw(username, card):
     except:
         pass
 
-# --- PDS 計算核心 ---
 def get_digit_sum(n):
     while n > 9: n = sum(int(d) for d in str(n))
     return n
@@ -161,10 +158,9 @@ def calculate_personal_year(birthdate):
     total = datetime.date.today().year + birthdate.month + birthdate.day
     return get_digit_sum(total), datetime.date.today().year
 
-# --- 5. 會員系統功能 (含救援機制) ---
+# --- 5. 會員與驗證函式 ---
 
 def register_user(username, password, email):
-    """註冊新用戶"""
     try:
         check = supabase.table("users").select("username").eq("username", username).execute()
         if check.data:
@@ -183,7 +179,6 @@ def register_user(username, password, email):
         return False, f"註冊失敗: {e}"
 
 def login_user(username, password):
-    """驗證登入"""
     try:
         response = supabase.table("users").select("*").eq("username", username).eq("password", password).execute()
         if response.data:
@@ -194,7 +189,6 @@ def login_user(username, password):
         return False
 
 def find_username(email):
-    """忘記帳號"""
     try:
         response = supabase.table("users").select("username").eq("email", email).execute()
         if response.data:
@@ -204,19 +198,7 @@ def find_username(email):
     except Exception as e:
         return False, str(e)
 
-def reset_password(username, email, new_password):
-    """忘記密碼重設"""
-    try:
-        check = supabase.table("users").select("*").eq("username", username).eq("email", email).execute()
-        if not check.data:
-            return False, "❌ 帳號與 Email 不匹配，無法重設。"
-        supabase.table("users").update({"password": new_password}).eq("username", username).execute()
-        return True, "✅ 密碼重設成功！請使用新密碼登入。"
-    except Exception as e:
-        return False, f"重設失敗: {e}"
-
 def send_email_otp(to_email, otp_code):
-    """發送驗證碼到使用者的 Gmail"""
     smtp_server = "smtp.gmail.com"
     smtp_port = 587
     sender_email = st.secrets["email"]["sender"]
@@ -248,7 +230,7 @@ def send_email_otp(to_email, otp_code):
     except Exception as e:
         return False, f"寄信失敗: {e}"
 
-# --- 6. 頁面視圖 ---
+# --- 6. 頁面視圖 (Login Page V8: 救援功能位置調整) ---
 
 def show_login_page():
     col1, col2 = st.columns([1.5, 1], gap="large")
@@ -268,24 +250,114 @@ def show_login_page():
     with col2:
         with st.container(border=True):
             st.header("🔐 會員專區")
-            tab1, tab2, tab3 = st.tabs(["登入", "註冊新帳號", "🆘 忘記帳密"])
+            # 🔥 移除 Tab 3，只保留兩個分頁
+            tab1, tab2 = st.tabs(["登入", "註冊新帳號"])
             
+            # --- 分頁 1: 登入 (包含救援切換) ---
             with tab1:
-                st.write("")
-                u = st.text_input("帳號", key="u_login")
-                p = st.text_input("密碼", type="password", key="p_login")
-                st.write("") 
-                if st.button("登入系統", type="primary", use_container_width=True):
-                    if login_user(u, p):
-                        st.session_state.logged_in = True
-                        st.session_state.username = u
-                        st.session_state.show_register_hint = False
-                        st.success(f"歡迎回來，{u}！")
-                        time.sleep(1)
+                # 判斷目前是「登入模式」還是「救援模式」
+                if st.session_state.login_view == 'login':
+                    st.write("")
+                    u = st.text_input("帳號", key="u_login")
+                    p = st.text_input("密碼", type="password", key="p_login")
+                    st.write("") 
+                    
+                    # 1. 登入按鈕 (紅色，全寬)
+                    if st.button("登入系統", type="primary", use_container_width=True):
+                        if login_user(u, p):
+                            st.session_state.logged_in = True
+                            st.session_state.username = u
+                            st.session_state.show_register_hint = False
+                            st.success(f"歡迎回來，{u}！")
+                            time.sleep(1)
+                            st.rerun()
+                        else:
+                            st.error("帳號不存在或密碼錯誤")
+                    
+                    st.write("") # 留一點空間
+                    
+                    # 2. 忘記密碼按鈕 (使用 columns 讓它變小並置中)
+                    # [1, 2, 1] 的比例，代表中間佔 2/4 (即 50%)，左右各留白 25%
+                    c_left, c_center, c_right = st.columns([1, 2, 1])
+                    with c_center:
+                        if st.button("🆘 忘記帳號 / 密碼 ?", use_container_width=True):
+                            st.session_state.login_view = 'recovery' # 切換狀態
+                            st.rerun() # 重新整理畫面
+
+                else:
+                    # --- 救援模式 (原本 Tab 3 的內容搬到這裡) ---
+                    st.markdown("##### 🛠️ 帳號救援中心")
+                    
+                    # 返回按鈕 (放在最上面，方便隨時回去)
+                    if st.button("🔙 返回登入頁面", use_container_width=True):
+                        st.session_state.login_view = 'login'
                         st.rerun()
-                    else:
-                        st.error("帳號不存在或密碼錯誤")
+                    
+                    st.divider()
+                    mode = st.radio("協助項目", ["找回帳號", "重設密碼 (Email驗證)"])
+                    
+                    if mode == "找回帳號":
+                        email = st.text_input("輸入註冊 Email", key="find_u")
+                        if st.button("🔍 查詢"):
+                            found, res = find_username(email) 
+                            if found: st.info(f"您的帳號是：{res}") 
+                            else: st.error(res)
+
+                    elif mode == "重設密碼 (Email驗證)":
+                        # (這裡沿用之前的 OTP 邏輯)
+                        if not st.session_state.is_verified:
+                            email_input = st.text_input("請輸入您的註冊 Email", key="rst_email")
+                            if st.button("📩 發送驗證碼"):
+                                current_time = time.time()
+                                if current_time - st.session_state.last_send_time < 300:
+                                    wait_time = 300 - int(current_time - st.session_state.last_send_time)
+                                    st.warning(f"⏳ 請勿頻繁發送，請再等待 {wait_time} 秒。")
+                                else:
+                                    check = supabase.table("users").select("username").eq("email", email_input).execute()
+                                    if not check.data:
+                                        st.error("❌ 找不到這個 Email")
+                                    else:
+                                        code = str(random.randint(100000, 999999))
+                                        success, msg = send_email_otp(email_input, code)
+                                        if success:
+                                            st.session_state.otp_code = code 
+                                            st.session_state.otp_email = email_input
+                                            st.session_state.last_send_time = current_time 
+                                            st.success(msg)
+                                        else:
+                                            st.error(msg)
+                            
+                            if st.session_state.otp_code:
+                                st.info("驗證碼已寄出")
+                                user_code = st.text_input("輸入 6 位數驗證碼", key="u_code")
+                                if st.button("✅ 驗證身分"):
+                                    if user_code == st.session_state.otp_code:
+                                        st.success("驗證成功！")
+                                        st.session_state.is_verified = True
+                                        st.rerun()
+                                    else:
+                                        st.error("❌ 驗證碼錯誤")
+                        else:
+                            st.success(f"身分確認無誤 ({st.session_state.otp_email})")
+                            new_pwd = st.text_input("設定新密碼", type="password", key="new_p_final")
+                            confirm_pwd = st.text_input("再次輸入新密碼", type="password", key="cfm_p_final")
+                            if st.button("💾 儲存新密碼"):
+                                if new_pwd != confirm_pwd:
+                                    st.error("兩次密碼不一致")
+                                else:
+                                    try:
+                                        supabase.table("users").update({"password": new_pwd}).eq("email", st.session_state.otp_email).execute()
+                                        st.balloons()
+                                        st.success("🎉 密碼修改成功！請重新登入。")
+                                        st.session_state.is_verified = False
+                                        st.session_state.otp_code = None
+                                        st.session_state.login_view = 'login' # 自動切回登入
+                                        time.sleep(2)
+                                        st.rerun()
+                                    except Exception as e:
+                                        st.error(f"更新失敗: {e}")
             
+            # --- 分頁 2: 註冊 ---
             with tab2:
                 st.write("")
                 new_u = st.text_input("設定帳號 (ID)")
@@ -303,75 +375,6 @@ def show_login_page():
                             st.success(msg)
                         else:
                             st.error(msg)
-
-            with tab3:
-                st.write("")
-                mode = st.radio("協助項目", ["找回帳號", "重設密碼 (Email驗證)"])
-                st.divider()
-                
-                if mode == "找回帳號":
-                    email = st.text_input("輸入註冊 Email", key="find_u")
-                    if st.button("🔍 查詢"):
-                        found, res = find_username(email) 
-                        if found: st.info(f"您的帳號是：{res}") 
-                        else: st.error(res)
-
-                elif mode == "重設密碼 (Email驗證)":
-                    if 'otp_code' not in st.session_state: st.session_state.otp_code = None
-                    if 'otp_email' not in st.session_state: st.session_state.otp_email = None
-                    if 'last_send_time' not in st.session_state: st.session_state.last_send_time = 0
-                    if 'is_verified' not in st.session_state: st.session_state.is_verified = False
-
-                    if not st.session_state.is_verified:
-                        email_input = st.text_input("請輸入您的註冊 Email", key="rst_email")
-                        if st.button("📩 發送驗證碼"):
-                            current_time = time.time()
-                            if current_time - st.session_state.last_send_time < 300:
-                                wait_time = 300 - int(current_time - st.session_state.last_send_time)
-                                st.warning(f"⏳ 請勿頻繁發送，請再等待 {wait_time} 秒。")
-                            else:
-                                check = supabase.table("users").select("username").eq("email", email_input).execute()
-                                if not check.data:
-                                    st.error("❌ 找不到這個 Email，請確認是否已註冊。")
-                                else:
-                                    code = str(random.randint(100000, 999999))
-                                    success, msg = send_email_otp(email_input, code)
-                                    if success:
-                                        st.session_state.otp_code = code 
-                                        st.session_state.otp_email = email_input
-                                        st.session_state.last_send_time = current_time 
-                                        st.success(msg)
-                                    else:
-                                        st.error(msg)
-                        
-                        if st.session_state.otp_code:
-                            st.info("驗證碼已寄出，請檢查您的 Gmail (包含垃圾郵件匣)")
-                            user_code = st.text_input("輸入 6 位數驗證碼", key="u_code")
-                            if st.button("✅ 驗證身分"):
-                                if user_code == st.session_state.otp_code:
-                                    st.success("驗證成功！請設定新密碼。")
-                                    st.session_state.is_verified = True
-                                    st.rerun()
-                                else:
-                                    st.error("❌ 驗證碼錯誤")
-                    else:
-                        st.success(f"身分確認無誤 ({st.session_state.otp_email})")
-                        new_pwd = st.text_input("設定新密碼", type="password", key="new_p_final")
-                        confirm_pwd = st.text_input("再次輸入新密碼", type="password", key="cfm_p_final")
-                        if st.button("💾 儲存新密碼"):
-                            if new_pwd != confirm_pwd:
-                                st.error("兩次密碼不一致")
-                            else:
-                                try:
-                                    supabase.table("users").update({"password": new_pwd}).eq("email", st.session_state.otp_email).execute()
-                                    st.balloons()
-                                    st.success("🎉 密碼修改成功！請重新登入。")
-                                    st.session_state.is_verified = False
-                                    st.session_state.otp_code = None
-                                    time.sleep(2)
-                                    st.rerun()
-                                except Exception as e:
-                                    st.error(f"更新失敗: {e}")
 
 def show_member_app():
     c1, c2 = st.columns([3, 1])
