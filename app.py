@@ -8,69 +8,49 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from supabase import create_client, Client
 
-# --- 1. 基礎設定 (這行永遠要是第一行) ---
+# --- 1. 基礎設定 ---
 st.set_page_config(page_title="喬鈞心學", page_icon="❤️‍🔥", layout="wide")
 
-# --- 🔥 Session 初始化 (防報錯金鐘罩) 🔥 ---
-# 通用狀態
+# --- Session 初始化 ---
 if 'logged_in' not in st.session_state: st.session_state.logged_in = False
 if 'username' not in st.session_state: st.session_state.username = ""
 if 'show_register_hint' not in st.session_state: st.session_state.show_register_hint = False
 if 'login_view' not in st.session_state: st.session_state.login_view = 'login'
 
-# 救援(忘記密碼)相關狀態
+# 救援與驗證相關狀態
 if 'otp_code' not in st.session_state: st.session_state.otp_code = None
 if 'otp_email' not in st.session_state: st.session_state.otp_email = None
 if 'last_send_time' not in st.session_state: st.session_state.last_send_time = 0
 if 'is_verified' not in st.session_state: st.session_state.is_verified = False
 
-# 🌟 註冊驗證相關狀態 (新功能)
-if 'reg_phase' not in st.session_state: st.session_state.reg_phase = 'input' # input: 輸入資料, verify: 驗證碼
+# 註冊驗證相關狀態
+if 'reg_phase' not in st.session_state: st.session_state.reg_phase = 'input'
 if 'reg_otp' not in st.session_state: st.session_state.reg_otp = None
-if 'reg_data' not in st.session_state: st.session_state.reg_data = {} # 暫存註冊資料
+if 'reg_data' not in st.session_state: st.session_state.reg_data = {}
 if 'reg_last_send' not in st.session_state: st.session_state.reg_last_send = 0
 
-# --- 2. 介面優化 (CSS) ---
+# --- 2. 介面優化 CSS ---
 st.markdown("""
     <style>
         [data-testid="stToolbar"] {visibility: hidden !important; display: none !important;}
         [data-testid="stHeader"] {visibility: hidden !important;}
         footer {visibility: hidden !important; display: none !important;}
-        
         .stApp { margin-top: -80px; }
-        
         div[data-baseweb="tab-list"] {
-            gap: 0px; 
-            background-color: #f8f9fa; 
-            padding: 8px; 
-            border-radius: 50px; 
-            box-shadow: inset 0 2px 4px rgba(0,0,0,0.05); 
-            margin-bottom: 20px; 
+            gap: 0px; background-color: #f8f9fa; padding: 8px; border-radius: 50px; 
+            box-shadow: inset 0 2px 4px rgba(0,0,0,0.05); margin-bottom: 20px; 
         }
         button[data-baseweb="tab"] {
-            background-color: transparent; 
-            border: none !important; 
-            margin: 0 !important; 
-            border-radius: 40px; 
-            padding: 10px 25px; 
-            font-size: 18px !important;
-            font-weight: 600 !important;
-            color: #666; 
-            transition: all 0.3s ease; 
+            background-color: transparent; border: none !important; margin: 0 !important; 
+            border-radius: 40px; padding: 10px 25px; font-size: 18px !important; 
+            font-weight: 600 !important; color: #666; transition: all 0.3s ease; 
         }
-        button[data-baseweb="tab"]:hover {
-            background-color: rgba(0,0,0,0.05); 
-            color: #333;
-        }
+        button[data-baseweb="tab"]:hover { background-color: rgba(0,0,0,0.05); color: #333; }
         button[data-baseweb="tab"][aria-selected="true"] {
             background: linear-gradient(135deg, #FF4B4B 0%, #FF9068 100%) !important; 
-            color: white !important; 
-            box-shadow: 0 4px 15px rgba(255, 75, 75, 0.35); 
-            transform: scale(1.02); 
+            color: white !important; box-shadow: 0 4px 15px rgba(255, 75, 75, 0.35); transform: scale(1.02); 
         }
-        button[data-baseweb="tab"][aria-selected="true"] p {
-            color: white !important;
-        }
+        button[data-baseweb="tab"][aria-selected="true"] p { color: white !important; }
     </style>
 """, unsafe_allow_html=True)
 
@@ -82,7 +62,7 @@ except ImportError:
     st.error("⚠️ 找不到 databases 資料夾！請檢查 GitHub 檔案結構。")
     st.stop()
 
-# --- 3. 資料庫連線 (Loading 動畫) ---
+# --- 3. 資料庫連線 ---
 @st.cache_resource
 def init_connection():
     try:
@@ -102,7 +82,6 @@ with st.spinner('🔮 正在連結宇宙資料庫...'):
     time.sleep(0.5)
 
 # --- 4. 業務邏輯函式 ---
-
 def get_taiwan_date_str():
     tz = datetime.timezone(datetime.timedelta(hours=8))
     return datetime.datetime.now(tz).strftime("%Y-%m-%d")
@@ -162,25 +141,18 @@ def calculate_personal_year(birthdate):
     total = datetime.date.today().year + birthdate.month + birthdate.day
     return get_digit_sum(total), datetime.date.today().year
 
-# --- 5. 會員與驗證函式 (核心升級) ---
-
+# --- 5. 會員與驗證函式 ---
 def check_user_exists(username, email):
-    """檢查帳號或 Email 是否已存在 (註冊前檢查用)"""
     try:
-        # 1. 檢查帳號
         check_u = supabase.table("users").select("username").eq("username", username).execute()
-        if check_u.data:
-            return True, "❌ 這個帳號已經有人用了，請換一個！"
-        # 2. 檢查 Email
+        if check_u.data: return True, "❌ 這個帳號已經有人用了，請換一個！"
         check_e = supabase.table("users").select("email").eq("email", email).execute()
-        if check_e.data:
-            return True, "❌ 這個 Email 已經註冊過了，請直接登入。"
+        if check_e.data: return True, "❌ 這個 Email 已經註冊過了，請直接登入。"
         return False, ""
     except Exception as e:
         return True, f"系統檢查失敗: {e}"
 
 def create_user_in_db(username, password, email):
-    """將驗證通過的用戶寫入資料庫"""
     data = {"username": username, "password": password, "email": email}
     try:
         supabase.table("users").insert(data).execute()
@@ -191,61 +163,41 @@ def create_user_in_db(username, password, email):
 def login_user(username, password):
     try:
         response = supabase.table("users").select("*").eq("username", username).eq("password", password).execute()
-        if response.data:
-            return True
-        else:
-            return False
-    except Exception:
+        if response.data: return True
         return False
+    except: return False
 
 def find_username(email):
     try:
         response = supabase.table("users").select("username").eq("email", email).execute()
-        if response.data:
-            return True, response.data[0]["username"]
-        else:
-            return False, "找不到這個 Email 的註冊資料。"
-    except Exception as e:
-        return False, str(e)
+        if response.data: return True, response.data[0]["username"]
+        return False, "找不到這個 Email 的註冊資料。"
+    except Exception as e: return False, str(e)
 
-# 🔥 升級版寄信函式1：支援「註冊」與「密碼重設」兩種模式 🔥
-# 🔥 升級版寄信函式2：支援本機與 Render 雙模式 🔥
+# 🔥🔥🔥 關鍵修復：寄信函式 (雙重讀取版) 🔥🔥🔥
 def send_verification_email(to_email, otp_code, purpose="register"):
     smtp_server = "smtp.gmail.com"
     smtp_port = 587
     
-    # 1. 嘗試讀取帳密 (優先讀取 secrets，失敗則讀取環境變數)
+    # 1. 嘗試從 secrets.toml 讀取 (本機用)
     try:
         sender_email = st.secrets["email"]["sender"]
         sender_password = st.secrets["email"]["password"]
     except:
-        # Render 雲端環境通常走這裡
+        # 2. 如果失敗，嘗試從環境變數讀取 (Render 雲端用)
         sender_email = os.environ.get("EMAIL_SENDER")
         sender_password = os.environ.get("EMAIL_PASSWORD")
 
-    # 2. 檢查是否成功取得帳密
+    # 3. 防呆檢查
     if not sender_email or not sender_password:
-        return False, "❌ 系統設定錯誤：找不到 Email 帳密，請檢查 Render 環境變數 (EMAIL_SENDER / EMAIL_PASSWORD)。"
+        return False, "❌ 系統錯誤：找不到 Email 設定，請檢查 Render 環境變數。"
 
     if purpose == "register":
         subject = "【喬鈞心學】歡迎註冊 - 您的驗證碼"
-        content_text = f"""
-        歡迎來到喬鈞心學！
-        
-        您的註冊驗證碼是：【 {otp_code} 】
-        
-        請回到網頁輸入此代碼以完成註冊。
-        """
-    else: # purpose == "reset"
+        content_text = f"歡迎來到喬鈞心學！\n\n您的註冊驗證碼是：【 {otp_code} 】\n\n請回到網頁輸入此代碼以完成註冊。"
+    else:
         subject = "【喬鈞心學】密碼重設驗證碼"
-        content_text = f"""
-        親愛的會員您好：
-        
-        我們收到了您的密碼重設請求。
-        您的驗證碼是：【 {otp_code} 】
-        
-        若您未申請，請忽略此信。
-        """
+        content_text = f"親愛的會員您好：\n\n我們收到了您的密碼重設請求。\n您的驗證碼是：【 {otp_code} 】\n\n若您未申請，請忽略此信。"
 
     msg = MIMEMultipart()
     msg['From'] = sender_email
@@ -263,22 +215,18 @@ def send_verification_email(to_email, otp_code, purpose="register"):
     except Exception as e:
         return False, f"寄信失敗: {e}"
 
-# --- 6. 頁面視圖 (含註冊驗證流程) ---
-
+# --- 6. 頁面視圖 ---
 def show_login_page():
     col1, col2 = st.columns([1.5, 1], gap="large")
     with col1:
         st.markdown("# 👁️ 歡迎來到喬鈞心學")
         st.markdown("### 探索你到底是什麼模樣，解開生命的原始設定。")
-        st.image("https://images.unsplash.com/photo-1517842645767-c639042777db?q=80&w=2670&auto=format&fit=crop", 
-                 caption="數字是世界通用的語言。", use_container_width=True)
+        st.image("https://images.unsplash.com/photo-1517842645767-c639042777db?q=80&w=2670&auto=format&fit=crop", caption="數字是世界通用的語言。", use_container_width=True)
         st.markdown("### 什麼是數字心理學？")
         st.info("這不只是算命，而是一套結合了畢達哥拉斯數學與現代心理學的行為分析系統。幫助你看見天賦、理解挑戰、規劃未來。")
         st.markdown("<br>", unsafe_allow_html=True)
-        if st.button("🔮 感到迷惘？先抽張牌試試 (每日指引)", use_container_width=True):
-             st.session_state.show_register_hint = True
-        if st.session_state.show_register_hint:
-            st.warning("🔒 請先註冊或登入會員，即可免費解鎖完整功能！")
+        if st.button("🔮 感到迷惘？先抽張牌試試 (每日指引)", use_container_width=True): st.session_state.show_register_hint = True
+        if st.session_state.show_register_hint: st.warning("🔒 請先註冊或登入會員，即可免費解鎖完整功能！")
 
     with col2:
         with st.container(border=True):
@@ -292,7 +240,6 @@ def show_login_page():
                     u = st.text_input("帳號", key="u_login")
                     p = st.text_input("密碼", type="password", key="p_login")
                     st.write("") 
-                    
                     if st.button("登入系統", type="primary", use_container_width=True):
                         if login_user(u, p):
                             st.session_state.logged_in = True
@@ -301,33 +248,27 @@ def show_login_page():
                             st.success(f"歡迎回來，{u}！")
                             time.sleep(1)
                             st.rerun()
-                        else:
-                            st.error("帳號不存在或密碼錯誤")
-                    
+                        else: st.error("帳號不存在或密碼錯誤")
                     st.write("") 
                     c_spacer, c_btn = st.columns([1.2, 1])
                     with c_btn:
                         if st.button("🆘 忘記帳號 / 密碼 ?", use_container_width=True):
                             st.session_state.login_view = 'recovery' 
                             st.rerun()
-
                 else:
-                    # --- 救援模式 ---
+                    # 救援模式
                     st.markdown("##### 🛠️ 帳號救援中心")
                     if st.button("🔙 返回登入頁面", use_container_width=True):
                         st.session_state.login_view = 'login'
                         st.rerun()
-                    
                     st.divider()
                     mode = st.radio("協助項目", ["找回帳號", "重設密碼 (Email驗證)"])
-                    
                     if mode == "找回帳號":
                         email = st.text_input("輸入註冊 Email", key="find_u")
                         if st.button("🔍 查詢"):
                             found, res = find_username(email) 
                             if found: st.info(f"您的帳號是：{res}") 
                             else: st.error(res)
-
                     elif mode == "重設密碼 (Email驗證)":
                         if not st.session_state.is_verified:
                             email_input = st.text_input("請輸入您的註冊 Email", key="rst_email")
@@ -337,10 +278,8 @@ def show_login_page():
                                     wait_time = 300 - int(current_time - st.session_state.last_send_time)
                                     st.warning(f"⏳ 請勿頻繁發送，請再等待 {wait_time} 秒。")
                                 else:
-                                    # 這裡沿用 find_username 來檢查 email 是否存在
                                     found, _ = find_username(email_input)
-                                    if not found:
-                                        st.error("❌ 找不到這個 Email")
+                                    if not found: st.error("❌ 找不到這個 Email")
                                     else:
                                         code = str(random.randint(100000, 999999))
                                         success, msg = send_verification_email(email_input, code, purpose="reset")
@@ -349,9 +288,7 @@ def show_login_page():
                                             st.session_state.otp_email = email_input
                                             st.session_state.last_send_time = current_time 
                                             st.success(msg)
-                                        else:
-                                            st.error(msg)
-                            
+                                        else: st.error(msg)
                             if st.session_state.otp_code:
                                 st.info("驗證碼已寄出")
                                 user_code = st.text_input("輸入 6 位數驗證碼", key="u_code")
@@ -360,15 +297,13 @@ def show_login_page():
                                         st.success("驗證成功！")
                                         st.session_state.is_verified = True
                                         st.rerun()
-                                    else:
-                                        st.error("❌ 驗證碼錯誤")
+                                    else: st.error("❌ 驗證碼錯誤")
                         else:
                             st.success(f"身分確認無誤 ({st.session_state.otp_email})")
                             new_pwd = st.text_input("設定新密碼", type="password", key="new_p_final")
                             confirm_pwd = st.text_input("再次輸入新密碼", type="password", key="cfm_p_final")
                             if st.button("💾 儲存新密碼"):
-                                if new_pwd != confirm_pwd:
-                                    st.error("兩次密碼不一致")
+                                if new_pwd != confirm_pwd: st.error("兩次密碼不一致")
                                 else:
                                     try:
                                         supabase.table("users").update({"password": new_pwd}).eq("email", st.session_state.otp_email).execute()
@@ -379,80 +314,58 @@ def show_login_page():
                                         st.session_state.login_view = 'login' 
                                         time.sleep(2)
                                         st.rerun()
-                                    except Exception as e:
-                                        st.error(f"更新失敗: {e}")
+                                    except Exception as e: st.error(f"更新失敗: {e}")
             
-            # --- Tab 2: 註冊新帳號 (V10 兩階段驗證版) ---
+            # --- Tab 2: 註冊新帳號 ---
             with tab2:
-                # 階段 1: 輸入資料
                 if st.session_state.reg_phase == 'input':
                     st.write("")
                     new_u = st.text_input("設定帳號 (ID)", key="reg_u")
                     email = st.text_input("Email (限 Gmail)", placeholder="name@gmail.com", key="reg_e")
                     new_p = st.text_input("設定密碼", type="password", key="reg_p")
                     st.write("")
-                    
                     if st.button("📩 獲取驗證碼", use_container_width=True):
-                        # 1. 基礎檢查
-                        if not email.endswith("@gmail.com"):
-                            st.error("請使用 Gmail 信箱註冊")
-                        elif not new_u or not new_p:
-                            st.error("請填寫完整資訊")
+                        if not email.endswith("@gmail.com"): st.error("請使用 Gmail 信箱註冊")
+                        elif not new_u or not new_p: st.error("請填寫完整資訊")
                         else:
-                            # 2. 檢查資料庫重複
                             exists, msg = check_user_exists(new_u, email)
-                            if exists:
-                                st.error(msg)
+                            if exists: st.error(msg)
                             else:
-                                # 3. 寄出驗證碼 (含冷卻機制)
                                 current_time = time.time()
-                                if current_time - st.session_state.reg_last_send < 60: # 註冊冷卻設 60 秒即可
-                                    st.warning("⏳ 驗證碼剛寄出，請稍後再試。")
+                                if current_time - st.session_state.reg_last_send < 60: st.warning("⏳ 驗證碼剛寄出，請稍後再試。")
                                 else:
                                     code = str(random.randint(100000, 999999))
                                     success, msg = send_verification_email(email, code, purpose="register")
                                     if success:
-                                        # 4. 暫存資料並切換到驗證階段
                                         st.session_state.reg_otp = code
                                         st.session_state.reg_data = {"u": new_u, "p": new_p, "e": email}
                                         st.session_state.reg_phase = 'verify'
                                         st.session_state.reg_last_send = current_time
                                         st.rerun()
-                                    else:
-                                        st.error(msg)
-                
-                # 階段 2: 輸入驗證碼
+                                    else: st.error(msg)
                 elif st.session_state.reg_phase == 'verify':
                     st.info(f"驗證碼已發送至：{st.session_state.reg_data.get('e')}")
-                    
                     reg_code_input = st.text_input("請輸入 6 位數驗證碼", key="reg_code_in")
-                    
                     col_back, col_ok = st.columns(2)
                     with col_back:
                         if st.button("🔙 返回修改", use_container_width=True):
                             st.session_state.reg_phase = 'input'
                             st.rerun()
-                    
                     with col_ok:
                         if st.button("✅ 完成註冊", type="primary", use_container_width=True):
                             if reg_code_input == st.session_state.reg_otp:
-                                # 驗證通過，正式寫入資料庫！
                                 u = st.session_state.reg_data['u']
                                 p = st.session_state.reg_data['p']
                                 e = st.session_state.reg_data['e']
-                                
                                 success, msg = create_user_in_db(u, p, e)
                                 if success:
                                     st.balloons()
                                     st.success("🎉 註冊成功！請切換到「登入」分頁進入系統。")
-                                    # 清除暫存
                                     st.session_state.reg_phase = 'input'
                                     st.session_state.reg_otp = None
                                     st.session_state.reg_data = {}
-                                else:
-                                    st.error(msg)
-                            else:
-                                st.error("❌ 驗證碼錯誤")
+                                else: st.error(msg)
+                            else: st.error("❌ 驗證碼錯誤")
 
 def show_member_app():
     c1, c2 = st.columns([3, 1])
@@ -464,13 +377,10 @@ def show_member_app():
             st.rerun()
             
     tab_pds, tab_card, tab_journal, tab_reader, tab_shop = st.tabs(["🧬 天賦運勢", "🔮 每日指引卡", "📔 日記", "📜 讀者專屬", "🛒 商城"])
-    
     with tab_pds:
         with st.container(border=True):
-            bd = st.date_input("出生年月日", value=datetime.date(1983, 9, 8), 
-                             min_value=datetime.date(1900, 1, 1), max_value=datetime.date.today())
+            bd = st.date_input("出生年月日", value=datetime.date(1983, 9, 8), min_value=datetime.date(1900, 1, 1), max_value=datetime.date.today())
             run_btn = st.button("🚀 開始分析", type="primary", use_container_width=True)
-            
         if run_btn:
             data = calculate_pds_full_codes(bd)
             py, cy = calculate_personal_year(bd)
@@ -479,7 +389,6 @@ def show_member_app():
             c1.metric("主命數", f"{data['O']} 號")
             c2.metric("流年運勢", f"{py}", delta=f"{cy}年")
             st.info(f"💡 {LIFE_PATH_MEANINGS.get(data['O'], '')}")
-            
             st.markdown("#### 📍 人生戰略地圖")
             with st.container(border=True):
                 st.markdown("**🌱 早年**")
@@ -487,16 +396,13 @@ def show_member_app():
                 for i, code in enumerate(data['codes']['early']): cols[i].code(code)
                 for code in data['codes']['early']:
                     if code in PDS_CODES: st.caption(f"**{code}**: {PDS_CODES[code]}")
-
             with st.container(border=True):
                 st.markdown("**☀️ 中年**")
                 cols = st.columns(4)
                 for i, code in enumerate(data['codes']['middle']):
                     if i == 0: cols[i].error(code)
                     else: cols[i].code(code)
-                if data['codes']['middle'][0] in PDS_CODES:
-                    st.success(f"🚩 **坐鎮碼**: {PDS_CODES[data['codes']['middle'][0]]}")
-
+                if data['codes']['middle'][0] in PDS_CODES: st.success(f"🚩 **坐鎮碼**: {PDS_CODES[data['codes']['middle'][0]]}")
             with st.container(border=True):
                 st.markdown("**🍂 晚年**")
                 cols = st.columns(4)
@@ -537,29 +443,20 @@ def show_member_app():
             c_tz, c_date, c_time = st.columns([2, 1.5, 1.5])
             with c_tz:
                 selected_zone = st.selectbox("🌍 時區", options=list(timezone_options.keys()), index=0)
-            
             offset_hours = timezone_options[selected_zone]
             user_tz = datetime.timezone(datetime.timedelta(hours=offset_hours))
             now_local = datetime.datetime.now(user_tz)
-            
-            with c_date:
-                pick_date = st.date_input("📅 日期", value=now_local.date())
-            with c_time:
-                pick_time = st.time_input("⏰ 時間", value=now_local.time())
-
+            with c_date: pick_date = st.date_input("📅 日期", value=now_local.date())
+            with c_time: pick_time = st.time_input("⏰ 時間", value=now_local.time())
         if 'pick_date' not in locals():
             pick_date = datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=8))).date()
             pick_time = datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=8))).time()
-
         with st.form("j_form", clear_on_submit=True):
             txt = st.text_area("✍️", height=200, placeholder="親愛的，今天發生了什麼事？你的感覺如何？...\n(這裡是一個安全的空間，請放心書寫)")
             c_null, c_btn = st.columns([3, 1])
-            with c_btn:
-                submitted = st.form_submit_button("💾 收藏這份記憶", use_container_width=True)
-            
+            with c_btn: submitted = st.form_submit_button("💾 收藏這份記憶", use_container_width=True)
             if submitted:
-                if not txt:
-                    st.warning("⚠️ 內容是空的，試著寫下一個字也好。")
+                if not txt: st.warning("⚠️ 內容是空的，試著寫下一個字也好。")
                 else:
                     final_dt = datetime.datetime.combine(pick_date, pick_time)
                     date_str = final_dt.strftime("%Y-%m-%d %H:%M:%S")
@@ -569,9 +466,7 @@ def show_member_app():
                         st.success(f"✅ 已保存！ ({date_str})")
                         time.sleep(1)
                         st.rerun()
-                    except Exception as e:
-                        st.error(f"儲存失敗: {e}")
-        
+                    except Exception as e: st.error(f"儲存失敗: {e}")
         st.divider()
         st.markdown("##### 🕰️ 回憶長廊")
         history = get_journals(st.session_state.username)
@@ -580,8 +475,7 @@ def show_member_app():
                 with st.expander(f"📅 {date_str} - {content[:10]}...", expanded=False):
                     st.markdown(content)
                     st.caption(f"記錄於: {date_str}")
-        else:
-            st.caption("這裡目前一片空白，等待你的第一筆紀錄...")
+        else: st.caption("這裡目前一片空白，等待你的第一筆紀錄...")
 
     with tab_reader:
         st.info("🚧 讀者專屬功能建置中... (這裡將連結你的書本內容)")
@@ -593,7 +487,5 @@ def show_member_app():
         c1.metric("預計上架商品", "12 件")
         c2.metric("目前優惠", "早鳥 8 折")
 
-if st.session_state.logged_in:
-    show_member_app()
-else:
-    show_login_page()
+if st.session_state.logged_in: show_member_app()
+else: show_login_page()
