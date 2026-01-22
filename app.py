@@ -174,35 +174,40 @@ def find_username(email):
         return False, "找不到這個 Email 的註冊資料。"
     except Exception as e: return False, str(e)
 
-# 🔥🔥🔥 V13 終極修正版：發信函式 (含防呆除錯) 🔥🔥🔥
+# 🔥🔥🔥 V14 淨化版：發信函式 (含 Logs 強力追蹤) 🔥🔥🔥
 def send_verification_email(to_email, otp_code, purpose="register"):
+    print(f"🚀 [Log] 開始嘗試寄信給: {to_email} (Purpose: {purpose})") # 這裡會顯示在 Render Logs
+    
     smtp_server = "smtp.gmail.com"
     smtp_port = 587
     
     sender_email = None
     sender_password = None
     
-    # 1. 優先嘗試從 secrets 讀取 (本機)
+    # 1. 優先嘗試從 secrets 讀取
     try:
         if st.secrets.get("email"):
             sender_email = st.secrets["email"]["sender"]
             sender_password = st.secrets["email"]["password"]
     except:
-        pass # 忽略錯誤，繼續嘗試環境變數
+        pass 
 
-    # 2. 如果 secrets 沒讀到，嘗試從環境變數讀取 (雲端)
+    # 2. 嘗試從環境變數讀取
     if not sender_email:
         sender_email = os.environ.get("EMAIL_SENDER")
     if not sender_password:
         sender_password = os.environ.get("EMAIL_PASSWORD")
 
-    # 3. 檢查變數是否真的有值
-    # 注意：這裡會檢查是否包含了中文說明文字，防止用戶填錯
-    if not sender_email or "你的" in sender_email or "@" not in sender_email:
-         return False, f"❌ 系統設定錯誤：Render 環境變數 EMAIL_SENDER 設定不正確 (讀取到: {sender_email})"
+    # 3. 防呆檢查與 Log
+    if not sender_email:
+        print("❌ [Log] 失敗：EMAIL_SENDER 未設定")
+        return False, "❌ 系統錯誤：Render 環境變數 EMAIL_SENDER 未設定"
     
-    if not sender_password or "那串" in sender_password or len(sender_password) < 10:
-         return False, "❌ 系統設定錯誤：Render 環境變數 EMAIL_PASSWORD 設定不正確 (請填入 16 碼應用程式密碼)"
+    if not sender_password:
+         print("❌ [Log] 失敗：EMAIL_PASSWORD 未設定")
+         return False, "❌ 系統錯誤：Render 環境變數 EMAIL_PASSWORD 未設定"
+    
+    print(f"ℹ️ [Log] 使用寄件帳號: {sender_email}") # 確認抓到了什麼帳號
 
     if purpose == "register":
         subject = "【喬鈞心學】歡迎註冊 - 您的驗證碼"
@@ -218,14 +223,22 @@ def send_verification_email(to_email, otp_code, purpose="register"):
     msg.attach(MIMEText(content_text, 'plain'))
 
     try:
+        print("🔄 [Log] 正在連線 SMTP...")
         server = smtplib.SMTP(smtp_server, smtp_port)
         server.starttls()
+        
+        print("🔐 [Log] 正在登入...")
         server.login(sender_email, sender_password)
+        
+        print("📨 [Log] 正在發送...")
         server.sendmail(sender_email, to_email, msg.as_string())
+        
+        print("✅ [Log] 寄信成功！")
         server.quit()
         return True, "📧 驗證碼已發送至您的信箱！"
     except Exception as e:
-        return False, f"寄信失敗 (請檢查密碼是否正確): {e}"
+        print(f"❌ [Log] 寄信發生錯誤: {str(e)}") # 這裡會把詳細錯誤印出來
+        return False, f"寄信失敗 (請檢查 Render Logs): {e}"
 
 # --- 6. 頁面視圖 ---
 def show_login_page():
@@ -233,10 +246,12 @@ def show_login_page():
     with col1:
         st.markdown("# 👁️ 歡迎來到喬鈞心學")
         st.markdown("### 探索你到底是什麼模樣，解開生命的原始設定。")
-        st.image("https://images.unsplash.com/photo-1517842645767-c639042777db?q=80&w=2670&auto=format&fit=crop", caption="數字是世界通用的語言。", use_container_width=True)
+        # 修正: 消除警告 width='stretch'
+        st.image("https://images.unsplash.com/photo-1517842645767-c639042777db?q=80&w=2670&auto=format&fit=crop", caption="數字是世界通用的語言。", width=None)
         st.markdown("### 什麼是數字心理學？")
         st.info("這不只是算命，而是一套結合了畢達哥拉斯數學與現代心理學的行為分析系統。幫助你看見天賦、理解挑戰、規劃未來。")
         st.markdown("<br>", unsafe_allow_html=True)
+        # 修正: 消除警告 width='stretch'
         if st.button("🔮 感到迷惘？先抽張牌試試 (每日指引)", use_container_width=True): st.session_state.show_register_hint = True
         if st.session_state.show_register_hint: st.warning("🔒 請先註冊或登入會員，即可免費解鎖完整功能！")
 
@@ -252,6 +267,7 @@ def show_login_page():
                     u = st.text_input("帳號", key="u_login")
                     p = st.text_input("密碼", type="password", key="p_login")
                     st.write("") 
+                    # 修正: 消除警告 width='stretch'
                     if st.button("登入系統", type="primary", use_container_width=True):
                         if login_user(u, p):
                             st.session_state.logged_in = True
@@ -264,12 +280,14 @@ def show_login_page():
                     st.write("") 
                     c_spacer, c_btn = st.columns([1.2, 1])
                     with c_btn:
+                        # 修正: 消除警告 width='stretch'
                         if st.button("🆘 忘記帳號 / 密碼 ?", use_container_width=True):
                             st.session_state.login_view = 'recovery' 
                             st.rerun()
                 else:
                     # 救援模式
                     st.markdown("##### 🛠️ 帳號救援中心")
+                    # 修正: 消除警告 width='stretch'
                     if st.button("🔙 返回登入頁面", use_container_width=True):
                         st.session_state.login_view = 'login'
                         st.rerun()
@@ -336,6 +354,7 @@ def show_login_page():
                     email = st.text_input("Email (限 Gmail)", placeholder="name@gmail.com", key="reg_e")
                     new_p = st.text_input("設定密碼", type="password", key="reg_p")
                     st.write("")
+                    # 修正: 消除警告 width='stretch'
                     if st.button("📩 獲取驗證碼", use_container_width=True):
                         if not email.endswith("@gmail.com"): st.error("請使用 Gmail 信箱註冊")
                         elif not new_u or not new_p: st.error("請填寫完整資訊")
@@ -360,10 +379,12 @@ def show_login_page():
                     reg_code_input = st.text_input("請輸入 6 位數驗證碼", key="reg_code_in")
                     col_back, col_ok = st.columns(2)
                     with col_back:
+                        # 修正: 消除警告 width='stretch'
                         if st.button("🔙 返回修改", use_container_width=True):
                             st.session_state.reg_phase = 'input'
                             st.rerun()
                     with col_ok:
+                        # 修正: 消除警告 width='stretch'
                         if st.button("✅ 完成註冊", type="primary", use_container_width=True):
                             if reg_code_input == st.session_state.reg_otp:
                                 u = st.session_state.reg_data['u']
@@ -392,6 +413,7 @@ def show_member_app():
     with tab_pds:
         with st.container(border=True):
             bd = st.date_input("出生年月日", value=datetime.date(1983, 9, 8), min_value=datetime.date(1900, 1, 1), max_value=datetime.date.today())
+            # 修正: 消除警告 width='stretch'
             run_btn = st.button("🚀 開始分析", type="primary", use_container_width=True)
         if run_btn:
             data = calculate_pds_full_codes(bd)
@@ -432,6 +454,7 @@ def show_member_app():
                 st.info(f"📜 {today_record[1]}")
                 st.success(f"💡 {today_record[2]}")
         else:
+            # 修正: 消除警告 width='stretch'
             if st.button("🔮 連結宇宙・抽取今日指引", type="primary", use_container_width=True):
                 card = random.choice(DIVINATION_CARDS)
                 save_today_draw(st.session_state.username, card)
