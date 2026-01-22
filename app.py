@@ -3,72 +3,67 @@ import streamlit as st
 import datetime
 import time
 import random
-from supabase import create_client, Client
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+from supabase import create_client, Client
 
-# --- 1. 基礎設定與導入 ---
+# --- 1. 基礎設定 (這行永遠要是第一行) ---
 st.set_page_config(page_title="喬鈞心學", page_icon="❤️‍🔥", layout="wide")
 
-# 隱藏 Streamlit 選單
-hide_st_style = """
-    <style>
-        [data-testid="stToolbar"] {visibility: hidden !important; display: none !important;}
-        #MainMenu {visibility: hidden !important; display: none !important;}
-        header {visibility: hidden !important;}
-        footer {visibility: hidden !important; display: none !important;}
-    </style>
-"""
-# --- 介面優化：隱藏選單 + 強化分頁按鈕樣式 ---
-# --- 介面優化：V3 現代 AI 科技風格 (流體導航列) ---
+# --- 🔥🔥🔥 關鍵修復：Session 初始化搬到這裡！ 🔥🔥🔥 ---
+if 'logged_in' not in st.session_state:
+    st.session_state.logged_in = False
+if 'username' not in st.session_state:
+    st.session_state.username = ""
+if 'show_register_hint' not in st.session_state:
+    st.session_state.show_register_hint = False
+# 寄信驗證相關變數
+if 'otp_code' not in st.session_state: st.session_state.otp_code = None
+if 'otp_email' not in st.session_state: st.session_state.otp_email = None
+if 'last_send_time' not in st.session_state: st.session_state.last_send_time = 0
+if 'is_verified' not in st.session_state: st.session_state.is_verified = False
+
+# --- 2. 介面優化 (隱藏選單 & Loading 優化) ---
 st.markdown("""
     <style>
-        /* 1. 隱藏 Streamlit 預設選單 (漢堡與浮水印) */
         [data-testid="stToolbar"] {visibility: hidden !important; display: none !important;}
-        #MainMenu {visibility: hidden !important; display: none !important;}
-        header {visibility: hidden !important;}
+        [data-testid="stHeader"] {visibility: hidden !important;}
         footer {visibility: hidden !important; display: none !important;}
         
-        /* 2. 導航列容器：創造「一體成型」的底座 */
-        div[data-baseweb="tab-list"] {
-            gap: 0px; /* 🔥 關鍵：移除分頁之間的間隙 */
-            background-color: #f8f9fa; /* 淺灰底色，像一個凹槽 */
-            padding: 8px; /* 內縮一點，讓按鈕懸浮在裡面 */
-            border-radius: 50px; /* 極度圓潤的膠囊形狀 */
-            box-shadow: inset 0 2px 4px rgba(0,0,0,0.05); /* 內陰影，增加立體感 */
-            margin-bottom: 20px; /* 跟下方內容保持距離 */
+        .stApp {
+            margin-top: -80px; 
         }
         
-        /* 3. 分頁按鈕本體 */
+        div[data-baseweb="tab-list"] {
+            gap: 0px; 
+            background-color: #f8f9fa; 
+            padding: 8px; 
+            border-radius: 50px; 
+            box-shadow: inset 0 2px 4px rgba(0,0,0,0.05); 
+            margin-bottom: 20px; 
+        }
         button[data-baseweb="tab"] {
-            background-color: transparent; /* 預設透明 */
-            border: none !important; /* 移除邊框 */
-            margin: 0 !important; /* 移除外距 */
-            border-radius: 40px; /* 按鈕也是圓的 */
-            padding: 10px 25px; /* 增加寬度 */
+            background-color: transparent; 
+            border: none !important; 
+            margin: 0 !important; 
+            border-radius: 40px; 
+            padding: 10px 25px; 
             font-size: 18px !important;
             font-weight: 600 !important;
-            color: #666; /* 未選中時是深灰色 */
-            transition: all 0.3s ease; /* 0.3秒絲滑過渡動畫 */
+            color: #666; 
+            transition: all 0.3s ease; 
         }
-        
-        /* 4. 滑鼠懸停效果 (Hover) */
         button[data-baseweb="tab"]:hover {
-            background-color: rgba(0,0,0,0.05); /* 微微變深 */
+            background-color: rgba(0,0,0,0.05); 
             color: #333;
         }
-        
-        /* 5. 選中狀態 (Active) - 重頭戲！AI 感的核心 */
         button[data-baseweb="tab"][aria-selected="true"] {
-            /* 🔥 現代 AI 常用的流體漸層 (配合你的紅色主題) */
             background: linear-gradient(135deg, #FF4B4B 0%, #FF9068 100%) !important; 
-            color: white !important; /* 白字 */
-            box-shadow: 0 4px 15px rgba(255, 75, 75, 0.35); /* 🔥 發光暈影 (Glow) */
-            transform: scale(1.02); /* 微微放大，強調選中感 */
+            color: white !important; 
+            box-shadow: 0 4px 15px rgba(255, 75, 75, 0.35); 
+            transform: scale(1.02); 
         }
-        
-        /* 強制修正選中時內層文字顏色 */
         button[data-baseweb="tab"][aria-selected="true"] p {
             color: white !important;
         }
@@ -83,7 +78,7 @@ except ImportError:
     st.error("⚠️ 找不到 databases 資料夾！請檢查 GitHub 檔案結構。")
     st.stop()
 
-# --- 2. 資料庫連線 (Supabase) ---
+# --- 3. 資料庫連線 (加入載入動畫) ---
 @st.cache_resource
 def init_connection():
     try:
@@ -98,18 +93,82 @@ def init_connection():
         st.stop()
     return create_client(url, key)
 
-supabase = init_connection()
+# 🔥 優化體驗：加上轉圈圈動畫 🔥
+with st.spinner('🔮 正在連結宇宙資料庫...'):
+    supabase = init_connection()
+    time.sleep(0.5) 
 
-# --- 3. 會員系統功能 (含救援機制) ---
+# --- 4. 業務邏輯與計算函式 (⚠️ 剛剛缺少的部份補在這裡) ---
+
+def get_taiwan_date_str():
+    """強制取得台灣目前的日期字串 (YYYY-MM-DD)"""
+    tz = datetime.timezone(datetime.timedelta(hours=8))
+    return datetime.datetime.now(tz).strftime("%Y-%m-%d")
+
+def get_journals(username):
+    try:
+        response = supabase.table("journals").select("*").eq("username", username).order("date_str", desc=True).execute()
+        return [(item["date_str"], item["content"]) for item in response.data]
+    except:
+        return []
+
+def get_today_draw(username):
+    today_str = get_taiwan_date_str()
+    try:
+        response = supabase.table("daily_draws").select("*").eq("username", username).eq("draw_date", today_str).execute()
+        if response.data:
+            item = response.data[0]
+            return (item["title"], item["poem"], item["desc"])
+        return None
+    except:
+        return None
+
+def save_today_draw(username, card):
+    today_str = get_taiwan_date_str()
+    data = {"username": username, "draw_date": today_str, "title": card['title'], "poem": card['poem'], "desc": card['desc']}
+    try:
+        supabase.table("daily_draws").insert(data).execute()
+    except:
+        pass
+
+# --- PDS 計算核心 ---
+def get_digit_sum(n):
+    while n > 9: n = sum(int(d) for d in str(n))
+    return n
+
+def calculate_pds_full_codes(birthdate):
+    y, m, d = birthdate.year, birthdate.month, birthdate.day
+    sy, sm, sd = f"{y:04d}", f"{m:02d}", f"{d:02d}"
+    A, B = int(sd[0]), int(sd[1])
+    C, D = int(sm[0]), int(sm[1])
+    E, F, G, H = int(sy[0]), int(sy[1]), int(sy[2]), int(sy[3])
+    I, J = get_digit_sum(A+B), get_digit_sum(C+D)
+    K, L = get_digit_sum(E+F), get_digit_sum(G+H)
+    M, N = get_digit_sum(I+J), get_digit_sum(K+L)
+    O = get_digit_sum(M+N)
+    P, Q = get_digit_sum(I+M), get_digit_sum(J+M)
+    R = get_digit_sum(P+Q)
+    V, W = get_digit_sum(K+N), get_digit_sum(L+N)
+    X = get_digit_sum(V+W)
+    S, T = get_digit_sum(N+O), get_digit_sum(M+O)
+    U = get_digit_sum(S+T)
+    early = [f"{I}{J}{M}", f"{I}{M}{P}", f"{J}{M}{Q}", f"{P}{Q}{R}"]
+    mid = [f"{M}{N}{O}", f"{M}{O}{T}", f"{N}{O}{S}", f"{S}{T}{U}"]
+    late = [f"{K}{L}{N}", f"{K}{N}{V}", f"{L}{N}{W}", f"{V}{W}{X}"]
+    return {"O": O, "codes": {"early": early, "middle": mid, "late": late}, "params": {"M": M, "N": N, "O": O, "U": U}}
+
+def calculate_personal_year(birthdate):
+    total = datetime.date.today().year + birthdate.month + birthdate.day
+    return get_digit_sum(total), datetime.date.today().year
+
+# --- 5. 會員系統功能 (含救援機制) ---
 
 def register_user(username, password, email):
     """註冊新用戶"""
     try:
-        # 檢查帳號
         check = supabase.table("users").select("username").eq("username", username).execute()
         if check.data:
             return False, "❌ 這個帳號已經有人用了，請換一個！"
-        # 檢查 Email (避免重複註冊)
         check_email = supabase.table("users").select("email").eq("email", email).execute()
         if check_email.data:
             return False, "❌ 這個 Email 已經註冊過了，請直接登入或找回帳號。"
@@ -135,7 +194,7 @@ def login_user(username, password):
         return False
 
 def find_username(email):
-    """忘記帳號：用 Email 找回"""
+    """忘記帳號"""
     try:
         response = supabase.table("users").select("username").eq("email", email).execute()
         if response.data:
@@ -146,15 +205,11 @@ def find_username(email):
         return False, str(e)
 
 def reset_password(username, email, new_password):
-    """忘記密碼：驗證帳號+Email後重設"""
+    """忘記密碼重設"""
     try:
-        # 1. 先驗證身分 (帳號 + Email 是否匹配)
         check = supabase.table("users").select("*").eq("username", username).eq("email", email).execute()
         if not check.data:
             return False, "❌ 帳號與 Email 不匹配，無法重設。"
-        
-        # 2. 更新密碼
-        # 注意：Supabase 更新資料需要指定條件 (eq)
         supabase.table("users").update({"password": new_password}).eq("username", username).execute()
         return True, "✅ 密碼重設成功！請使用新密碼登入。"
     except Exception as e:
@@ -164,7 +219,6 @@ def send_email_otp(to_email, otp_code):
     """發送驗證碼到使用者的 Gmail"""
     smtp_server = "smtp.gmail.com"
     smtp_port = 587
-    # 從 secrets 讀取帳密
     sender_email = st.secrets["email"]["sender"]
     sender_password = st.secrets["email"]["password"]
 
@@ -176,8 +230,6 @@ def send_email_otp(to_email, otp_code):
     您的驗證碼是：【 {otp_code} 】
     
     此驗證碼有效期限為 5 分鐘，請勿將此代碼告訴任何人。
-    
-    若您未申請重設密碼，請忽略此信。
     """
 
     msg = MIMEMultipart()
@@ -196,7 +248,7 @@ def send_email_otp(to_email, otp_code):
     except Exception as e:
         return False, f"寄信失敗: {e}"
 
-# --- 頁面視圖 ---
+# --- 6. 頁面視圖 ---
 
 def show_login_page():
     col1, col2 = st.columns([1.5, 1], gap="large")
@@ -216,10 +268,8 @@ def show_login_page():
     with col2:
         with st.container(border=True):
             st.header("🔐 會員專區")
-            # 🔥 新增第三個分頁：救援 (SOS) 🔥
             tab1, tab2, tab3 = st.tabs(["登入", "註冊新帳號", "🆘 忘記帳密"])
             
-            # --- 1. 登入 ---
             with tab1:
                 st.write("")
                 u = st.text_input("帳號", key="u_login")
@@ -236,7 +286,6 @@ def show_login_page():
                     else:
                         st.error("帳號不存在或密碼錯誤")
             
-            # --- 2. 註冊 ---
             with tab2:
                 st.write("")
                 new_u = st.text_input("設定帳號 (ID)")
@@ -255,57 +304,46 @@ def show_login_page():
                         else:
                             st.error(msg)
 
-            # --- 3. 救援 (找回帳密) ---
             with tab3:
                 st.write("")
                 mode = st.radio("協助項目", ["找回帳號", "重設密碼 (Email驗證)"])
                 st.divider()
                 
                 if mode == "找回帳號":
-                    # (這部分保持原本的邏輯，或你要改成寄信也可以)
                     email = st.text_input("輸入註冊 Email", key="find_u")
                     if st.button("🔍 查詢"):
-                        found, res = find_username(email) # 假設你還有保留這個函式
-                        if found: st.info(f"您的帳號是：{res}") # 比較安全的做法其實也是寄信告知
+                        found, res = find_username(email) 
+                        if found: st.info(f"您的帳號是：{res}") 
                         else: st.error(res)
 
                 elif mode == "重設密碼 (Email驗證)":
-                    # 初始化 Session State 來存驗證碼和時間
                     if 'otp_code' not in st.session_state: st.session_state.otp_code = None
                     if 'otp_email' not in st.session_state: st.session_state.otp_email = None
                     if 'last_send_time' not in st.session_state: st.session_state.last_send_time = 0
                     if 'is_verified' not in st.session_state: st.session_state.is_verified = False
 
-                    # 步驟 1: 發送驗證碼
                     if not st.session_state.is_verified:
                         email_input = st.text_input("請輸入您的註冊 Email", key="rst_email")
-                        
                         if st.button("📩 發送驗證碼"):
-                            # 1. 檢查冷卻時間 (5分鐘 = 300秒)
                             current_time = time.time()
                             if current_time - st.session_state.last_send_time < 300:
                                 wait_time = 300 - int(current_time - st.session_state.last_send_time)
                                 st.warning(f"⏳ 請勿頻繁發送，請再等待 {wait_time} 秒。")
                             else:
-                                # 2. 檢查 Email 是否存在於資料庫
                                 check = supabase.table("users").select("username").eq("email", email_input).execute()
                                 if not check.data:
                                     st.error("❌ 找不到這個 Email，請確認是否已註冊。")
                                 else:
-                                    # 3. 生成 6 位數驗證碼
                                     code = str(random.randint(100000, 999999))
-                                    
-                                    # 4. 寄信
                                     success, msg = send_email_otp(email_input, code)
                                     if success:
-                                        st.session_state.otp_code = code # 暫存在 Session
+                                        st.session_state.otp_code = code 
                                         st.session_state.otp_email = email_input
-                                        st.session_state.last_send_time = current_time # 更新發送時間
+                                        st.session_state.last_send_time = current_time 
                                         st.success(msg)
                                     else:
                                         st.error(msg)
                         
-                        # 步驟 2: 輸入驗證碼
                         if st.session_state.otp_code:
                             st.info("驗證碼已寄出，請檢查您的 Gmail (包含垃圾郵件匣)")
                             user_code = st.text_input("輸入 6 位數驗證碼", key="u_code")
@@ -316,29 +354,25 @@ def show_login_page():
                                     st.rerun()
                                 else:
                                     st.error("❌ 驗證碼錯誤")
-                    
-                    # 步驟 3: 重設密碼 (只有驗證通過才會顯示)
                     else:
                         st.success(f"身分確認無誤 ({st.session_state.otp_email})")
                         new_pwd = st.text_input("設定新密碼", type="password", key="new_p_final")
                         confirm_pwd = st.text_input("再次輸入新密碼", type="password", key="cfm_p_final")
-                        
                         if st.button("💾 儲存新密碼"):
                             if new_pwd != confirm_pwd:
                                 st.error("兩次密碼不一致")
                             else:
-                                # 更新資料庫
                                 try:
                                     supabase.table("users").update({"password": new_pwd}).eq("email", st.session_state.otp_email).execute()
                                     st.balloons()
                                     st.success("🎉 密碼修改成功！請重新登入。")
-                                    # 清除狀態
                                     st.session_state.is_verified = False
                                     st.session_state.otp_code = None
                                     time.sleep(2)
                                     st.rerun()
                                 except Exception as e:
                                     st.error(f"更新失敗: {e}")
+
 def show_member_app():
     c1, c2 = st.columns([3, 1])
     with c1: st.markdown(f"**Hi, {st.session_state.username}** 👋")
@@ -411,13 +445,7 @@ def show_member_app():
                 st.rerun()
 
     with tab_journal:
-        # --- V5 優化：沈浸式日記體驗 ---
-        
-        # 1. 標題區：給予一點儀式感
         st.markdown("#### 📔 此刻，與自己對話")
-        
-        # 2. 將「技術性設定」藏起來 (Expander)
-        # 只有當使用者想「補寫」或「人在國外」時，才需要點開這裡
         with st.expander("⚙️ 進階設定：調整日期、時間或時區 (點擊展開)", expanded=False):
             timezone_options = {
                 "🇹🇼 台灣/中國 (UTC+8)": 8,
@@ -429,7 +457,6 @@ def show_member_app():
             with c_tz:
                 selected_zone = st.selectbox("🌍 時區", options=list(timezone_options.keys()), index=0)
             
-            # 計算時間
             offset_hours = timezone_options[selected_zone]
             user_tz = datetime.timezone(datetime.timedelta(hours=offset_hours))
             now_local = datetime.datetime.now(user_tz)
@@ -439,17 +466,12 @@ def show_member_app():
             with c_time:
                 pick_time = st.time_input("⏰ 時間", value=now_local.time())
 
-        # 3. 核心書寫區 (乾淨、無干擾)
-        # 如果使用者沒展開上面的設定，這裡預設就是當下的台灣時間
-        if 'pick_date' not in locals(): # 防呆
+        if 'pick_date' not in locals():
             pick_date = datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=8))).date()
             pick_time = datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=8))).time()
-            selected_zone = "🇹🇼 台灣/中國 (UTC+8)"
 
-        with st.form("j_form", clear_on_submit=True): # clear_on_submit=True 讓寫完後自動清空
+        with st.form("j_form", clear_on_submit=True):
             txt = st.text_area("✍️", height=200, placeholder="親愛的，今天發生了什麼事？你的感覺如何？...\n(這裡是一個安全的空間，請放心書寫)")
-            
-            # 透過 columns 讓按鈕縮小一點，靠右一點
             c_null, c_btn = st.columns([3, 1])
             with c_btn:
                 submitted = st.form_submit_button("💾 收藏這份記憶", use_container_width=True)
@@ -460,7 +482,6 @@ def show_member_app():
                 else:
                     final_dt = datetime.datetime.combine(pick_date, pick_time)
                     date_str = final_dt.strftime("%Y-%m-%d %H:%M:%S")
-                    
                     data = {"username": st.session_state.username, "content": txt, "date_str": date_str}
                     try:
                         supabase.table("journals").insert(data).execute()
@@ -470,13 +491,11 @@ def show_member_app():
                     except Exception as e:
                         st.error(f"儲存失敗: {e}")
         
-        # 4. 歷史紀錄 (優化顯示)
         st.divider()
         st.markdown("##### 🕰️ 回憶長廊")
         history = get_journals(st.session_state.username)
         if history:
             for date_str, content in history:
-                # 使用 expander 讓長篇日記預設收合，畫面更清爽
                 with st.expander(f"📅 {date_str} - {content[:10]}...", expanded=False):
                     st.markdown(content)
                     st.caption(f"記錄於: {date_str}")
