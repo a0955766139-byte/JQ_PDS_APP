@@ -230,7 +230,7 @@ def send_email_otp(to_email, otp_code):
     except Exception as e:
         return False, f"寄信失敗: {e}"
 
-# --- 6. 頁面視圖 (Login Page V8: 救援功能位置調整) ---
+# --- 6. 頁面視圖 (Login Page V9: 救援按鈕靠右版) ---
 
 def show_login_page():
     col1, col2 = st.columns([1.5, 1], gap="large")
@@ -276,19 +276,20 @@ def show_login_page():
                     
                     st.write("") # 留一點空間
                     
-                    # 2. 忘記密碼按鈕 (使用 columns 讓它變小並置中)
-                    # [1, 2, 1] 的比例，代表中間佔 2/4 (即 50%)，左右各留白 25%
-                    c_left, c_center, c_right = st.columns([1, 2, 1])
-                    with c_center:
+                    # 2. 忘記密碼按鈕 (靠右對齊)
+                    # [1.2, 1] 的比例：左邊是空的 (約佔55%)，右邊放按鈕 (約佔45%)
+                    # 這樣按鈕就會被擠到右邊去
+                    c_spacer, c_btn = st.columns([1.2, 1])
+                    with c_btn:
                         if st.button("🆘 忘記帳號 / 密碼 ?", use_container_width=True):
                             st.session_state.login_view = 'recovery' # 切換狀態
                             st.rerun() # 重新整理畫面
 
                 else:
                     # --- 救援模式 (原本 Tab 3 的內容搬到這裡) ---
-                    st.markdown("##### 🛠️ 帳號救援中心")
+                    st.markdown("##### 帳號救援中心")
                     
-                    # 返回按鈕 (放在最上面，方便隨時回去)
+                    # 返回按鈕
                     if st.button("🔙 返回登入頁面", use_container_width=True):
                         st.session_state.login_view = 'login'
                         st.rerun()
@@ -298,7 +299,7 @@ def show_login_page():
                     
                     if mode == "找回帳號":
                         email = st.text_input("輸入註冊 Email", key="find_u")
-                        if st.button("🔍 查詢"):
+                        if st.button("🔍 確定查詢"):
                             found, res = find_username(email) 
                             if found: st.info(f"您的帳號是：{res}") 
                             else: st.error(res)
