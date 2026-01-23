@@ -4,6 +4,7 @@ import datetime
 import time
 import random
 import smtplib
+import requests  # V18 新增：用來跟 LINE 直接溝通
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from supabase import create_client, Client
@@ -14,7 +15,7 @@ st.set_page_config(page_title="喬鈞心學", page_icon="❤️‍🔥", layout=
 # --- Session 初始化 ---
 if 'logged_in' not in st.session_state: st.session_state.logged_in = False
 if 'username' not in st.session_state: st.session_state.username = ""
-if 'user_email' not in st.session_state: st.session_state.user_email = ""  # 新增 Email 紀錄
+if 'user_email' not in st.session_state: st.session_state.user_email = ""
 if 'show_register_hint' not in st.session_state: st.session_state.show_register_hint = False
 if 'login_view' not in st.session_state: st.session_state.login_view = 'login'
 
@@ -30,7 +31,7 @@ if 'reg_otp' not in st.session_state: st.session_state.reg_otp = None
 if 'reg_data' not in st.session_state: st.session_state.reg_data = {} 
 if 'reg_last_send' not in st.session_state: st.session_state.reg_last_send = 0
 
-# --- 2. CSS 優化 (含 LINE 按鈕樣式) ---
+# --- 2. CSS 優化 (含 LINE 按鈕) ---
 st.markdown("""
     <style>
         [data-testid="stToolbar"] {visibility: hidden !important; display: none !important;}
@@ -53,16 +54,16 @@ st.markdown("""
         }
         button[data-baseweb="tab"][aria-selected="true"] p { color: white !important; }
 
-        /* LINE 按鈕專用樣式 */
+        /* LINE 按鈕樣式 */
         .line-btn {
             display: inline-flex; align-items: center; justify-content: center;
             width: 100%; background-color: #06C755; color: white; 
-            padding: 10px 0; border-radius: 8px; text-decoration: none; 
-            font-weight: bold; font-family: sans-serif; margin-bottom: 15px;
+            padding: 12px 0; border-radius: 8px; text-decoration: none; 
+            font-weight: bold; font-family: sans-serif; margin-bottom: 15px; font-size: 16px;
             box-shadow: 0 2px 5px rgba(0,0,0,0.2); transition: background 0.3s;
         }
         .line-btn:hover { background-color: #05b34c; color: white; }
-        .line-btn img { margin-right: 10px; height: 24px; width: 24px; }
+        .line-btn img { margin-right: 10px; height: 24px; width: 24px; filter: brightness(0) invert(1); }
     </style>
 """, unsafe_allow_html=True)
 
@@ -83,7 +84,6 @@ def init_connection():
     except:
         url = os.environ.get("SUPABASE_URL")
         key = os.environ.get("SUPABASE_KEY")
-    
     if not url or not key:
         st.error("❌ 找不到資料庫連線資訊。")
         st.stop()
@@ -93,54 +93,87 @@ with st.spinner('🔮 正在連結宇宙資料庫...'):
     supabase = init_connection()
     time.sleep(0.5)
 
-# --- 4. LINE 登入邏輯 (V17 新增) ---
-def handle_oauth_callback():
-    """檢查網址是否有 LINE 登入回傳的 code，並進行登入"""
+# --- 4. V18 LINE 直連邏輯 (不透過 Supabase Provider) ---
+def get_line_auth_url():
+    """產生 LINE 登入網址"""
+    channel_id = os.environ.get("LINE_CHANNEL_ID")
+    if not channel_id: return None # 沒設定變數就不顯示按鈕
+    
+    redirect_uri = "https://jq-pds-app.onrender.com"
+    state = str(random.randint(100000, 999999))
+    scope = "profile%20openid%20email"
+    
+    auth_url = f"https://access.line.me/oauth2/v2.1/authorize?response_type=code&client_id={channel_id}&redirect_uri={redirect_uri}&state={state}&scope={scope}"
+    return auth_url
+
+def handle_line_callback():
+    """處理 LINE 登入回傳"""
     query_params = st.query_params
     if "code" in query_params:
+        code = query_params["code"]
+        channel_id = os.environ.get("LINE_CHANNEL_ID")
+        channel_secret = os.environ.get("LINE_CHANNEL_SECRET")
+        redirect_uri = "https://jq-pds-app.onrender.com"
+        
+        if not channel_id or not channel_secret:
+            st.error("❌ LINE 環境變數未設定")
+            return
+
         try:
-            # 用 code 交換 Session
-            auth_response = supabase.auth.exchange_code_for_session({"auth_code": query_params["code"]})
-            user = auth_response.user
-            if user:
+            # 1. 用 code 換 token
+            token_url = "https://api.line.me/oauth2/v2.1/token"
+            payload = {
+                "grant_type": "authorization_code",
+                "code": code,
+                "redirect_uri": redirect_uri,
+                "client_id": channel_id,
+                "client_secret": channel_secret
+            }
+            headers = {"Content-Type": "application/x-www-form-urlencoded"}
+            
+            res = requests.post(token_url, data=payload, headers=headers)
+            if res.status_code != 200:
+                st.error(f"LINE 驗證失敗: {res.text}")
+                return
+
+            id_token = res.json().get("id_token")
+            
+            # 2. 驗證並解碼 id_token 取得使用者資料
+            verify_url = "https://api.line.me/oauth2/v2.1/verify"
+            verify_payload = {"id_token": id_token, "client_id": channel_id}
+            user_res = requests.post(verify_url, data=verify_payload)
+            
+            if user_res.status_code == 200:
+                user_data = user_res.json()
+                line_name = user_data.get("name")
+                line_email = user_data.get("email")
+                
+                # 登入成功！
                 st.session_state.logged_in = True
-                # 嘗試從 metadata 抓名字，抓不到就用 email
-                st.session_state.username = user.user_metadata.get("full_name") or user.email.split("@")[0]
-                st.session_state.user_email = user.email
+                st.session_state.username = line_name
+                st.session_state.user_email = line_email
                 st.session_state.show_register_hint = False
                 
-                # 清除網址參數，避免重新整理後報錯
+                # 清除網址參數
                 st.query_params.clear()
-                st.success(f"LINE 登入成功！歡迎 {st.session_state.username}")
+                st.balloons()
+                st.success(f"🎉 歡迎回來，{line_name}！")
                 time.sleep(1)
                 st.rerun()
+            else:
+                st.error("無法取得使用者資料")
+                
         except Exception as e:
-            st.error(f"LINE 登入驗證失敗: {e}")
+            st.error(f"連線錯誤: {e}")
             st.query_params.clear()
 
-# 每次重新執行都檢查一下有沒有 callback
+# 每次執行檢查回傳
 if not st.session_state.logged_in:
-    handle_oauth_callback()
+    handle_line_callback()
 
-def get_line_login_url():
-    """產生 LINE 登入連結"""
-    # 這裡必須填寫你 Render 的網址
-    redirect_url = "https://jq-pds-app.onrender.com" 
-    try:
-        data = supabase.auth.sign_in_with_oauth({
-            "provider": "line",
-            "options": {
-                "redirect_to": redirect_url
-            }
-        })
-        return data.url
-    except Exception as e:
-        return None
-
-# --- 5. 業務邏輯函式 (PDS, Card, Journal...) ---
-# (這些函式保持 V16 原樣，為了篇幅省略，請務必保留原本的邏輯代碼！)
-# ... [請保留 get_taiwan_date_str, get_journals, get_today_draw, save_today_draw 等函式] ...
-# 為了讓你方便複製，我這裡還是把完整的函式貼上，避免漏掉
+# --- 5. 業務邏輯函式 (保持原樣) ---
+# [請務必保留原本的 PDS, Card, Journal 邏輯，這裡省略以節省篇幅]
+# 為了避免複製錯誤，我還是把核心函式附上：
 
 def get_taiwan_date_str():
     tz = datetime.timezone(datetime.timedelta(hours=8))
@@ -197,23 +230,7 @@ def calculate_personal_year(birthdate):
     total = datetime.date.today().year + birthdate.month + birthdate.day
     return get_digit_sum(total), datetime.date.today().year
 
-# 會員與驗證函式 (傳統 Email 註冊用)
-def check_user_exists(username, email):
-    try:
-        check_u = supabase.table("users").select("username").eq("username", username).execute()
-        if check_u.data: return True, "❌ 這個帳號已經有人用了"
-        check_e = supabase.table("users").select("email").eq("email", email).execute()
-        if check_e.data: return True, "❌ 這個 Email 已經註冊過了"
-        return False, ""
-    except: return True, "系統忙碌中"
-
-def create_user_in_db(username, password, email):
-    data = {"username": username, "password": password, "email": email}
-    try:
-        supabase.table("users").insert(data).execute()
-        return True, "✅ 註冊成功！"
-    except Exception as e: return False, f"註冊失敗: {e}"
-
+# 傳統登入函式
 def login_user(username, password):
     try:
         response = supabase.table("users").select("*").eq("username", username).eq("password", password).execute()
@@ -227,28 +244,6 @@ def find_username(email):
         if response.data: return True, response.data[0]["username"]
         return False, "找不到資料"
     except: return False, "Error"
-
-# 發信函式 (保留但如果用 LINE 就不太需要了)
-def send_verification_email(to_email, otp_code, purpose="register"):
-    smtp_server, smtp_port = "smtp.gmail.com", 587
-    sender_email = os.environ.get("EMAIL_SENDER")
-    sender_password = os.environ.get("EMAIL_PASSWORD")
-    if not sender_email or not sender_password: return False, "系統設定錯誤"
-    
-    msg = MIMEMultipart()
-    msg['From'] = sender_email
-    msg['To'] = to_email
-    msg['Subject'] = "【喬鈞心學】驗證碼" if purpose=="register" else "【喬鈞心學】密碼重設"
-    msg.attach(MIMEText(f"您的驗證碼是：【 {otp_code} 】", 'plain'))
-
-    try:
-        server = smtplib.SMTP(smtp_server, smtp_port)
-        server.starttls()
-        server.login(sender_email, sender_password)
-        server.sendmail(sender_email, to_email, msg.as_string())
-        server.quit()
-        return True, "驗證碼已發送"
-    except Exception as e: return False, f"寄信失敗: {e}"
 
 # --- 6. 頁面視圖 ---
 def show_login_page():
@@ -267,61 +262,41 @@ def show_login_page():
         with st.container(border=True):
             st.header("🔐 會員專區")
             
-            # 🔥 V17 新增：LINE 登入按鈕 🔥
-            line_url = get_line_login_url()
-            if line_url:
+            # 🔥 LINE 直連登入按鈕 🔥
+            auth_url = get_line_auth_url()
+            if auth_url:
                 st.markdown(f'''
-                    <a href="{line_url}" target="_self" class="line-btn">
+                    <a href="{auth_url}" target="_self" class="line-btn">
                         <img src="https://upload.wikimedia.org/wikipedia/commons/4/41/LINE_logo.svg" alt="LINE">
                         使用 LINE 帳號一鍵登入
                     </a>
                 ''', unsafe_allow_html=True)
-                st.markdown("""<div style="text-align: center; color: #888; margin: 10px 0;">或是使用傳統帳號登入</div>""", unsafe_allow_html=True)
+            else:
+                st.warning("⚠️ 系統未設定 LINE 連線參數")
 
-            tab1, tab2 = st.tabs(["登入", "註冊"])
+            st.markdown("""<div style="text-align: center; color: #888; margin: 10px 0;">或是使用傳統帳號登入</div>""", unsafe_allow_html=True)
+
+            tab1, tab2 = st.tabs(["登入", "找回帳號"])
             
             with tab1:
-                if st.session_state.login_view == 'login':
-                    u = st.text_input("帳號", key="u_login")
-                    p = st.text_input("密碼", type="password", key="p_login")
-                    if st.button("登入系統", type="primary", use_container_width=True):
-                        if login_user(u, p):
-                            st.session_state.logged_in = True
-                            st.session_state.username = u
-                            st.session_state.show_register_hint = False
-                            st.success(f"歡迎，{u}！")
-                            time.sleep(1)
-                            st.rerun()
-                        else: st.error("帳號或密碼錯誤")
-                    st.markdown("---")
-                    if st.button("🆘 忘記帳號/密碼", use_container_width=True):
-                        st.session_state.login_view = 'recovery' 
+                u = st.text_input("帳號", key="u_login")
+                p = st.text_input("密碼", type="password", key="p_login")
+                if st.button("登入系統", type="primary", use_container_width=True):
+                    if login_user(u, p):
+                        st.session_state.logged_in = True
+                        st.session_state.username = u
+                        st.session_state.show_register_hint = False
+                        st.success(f"歡迎，{u}！")
+                        time.sleep(1)
                         st.rerun()
-                else:
-                    st.markdown("##### 🛠️ 救援中心")
-                    if st.button("🔙 返回", use_container_width=True):
-                        st.session_state.login_view = 'login'
-                        st.rerun()
-                    st.divider()
-                    # 這裡只保留找回帳號，因為 LINE 不需要密碼
-                    email = st.text_input("輸入註冊 Email", key="find_u")
-                    if st.button("🔍 找回帳號"):
-                        found, res = find_username(email) 
-                        if found: st.info(f"您的帳號是：{res}") 
-                        else: st.error(res)
+                    else: st.error("帳號或密碼錯誤")
 
             with tab2:
-                # 傳統註冊保留，但如果用 LINE 就不需要這裡
-                st.info("💡 推薦使用上方「LINE 登入」，免記密碼最方便！")
-                if st.checkbox("我堅持要用傳統 Email 註冊"):
-                    if st.session_state.reg_phase == 'input':
-                        new_u = st.text_input("設定帳號", key="reg_u")
-                        email = st.text_input("Email", key="reg_e")
-                        new_p = st.text_input("設定密碼", type="password", key="reg_p")
-                        if st.button("📩 獲取驗證碼", use_container_width=True):
-                             # ... (這裡保留原本的寄信邏輯，如果 Render 偶爾寄得出去的話)
-                             pass # 為了篇幅省略，若原本有需要可保留
-                    # ... (省略原本註冊邏輯，因為主要推 LINE)
+                email = st.text_input("輸入註冊 Email", key="find_u")
+                if st.button("🔍 找回帳號"):
+                    found, res = find_username(email) 
+                    if found: st.info(f"您的帳號是：{res}") 
+                    else: st.error(res)
 
 def show_member_app():
     c1, c2 = st.columns([3, 1])
@@ -331,13 +306,12 @@ def show_member_app():
             st.session_state.logged_in = False
             st.session_state.username = ""
             st.session_state.user_email = ""
-            supabase.auth.sign_out() # 登出 LINE Session
             st.rerun()
             
-    # 下方是你的五大功能分頁，保持原樣 (V16)
+    # 下方是你的五大功能分頁
     tab_pds, tab_card, tab_journal, tab_reader, tab_shop = st.tabs(["🧬 天賦運勢", "🔮 每日指引卡", "📔 日記", "📜 讀者專屬", "🛒 商城"])
     
-    # --- PDS (含 V16 下拉選單) ---
+    # --- PDS (含下拉選單) ---
     with tab_pds:
         with st.container(border=True):
             st.markdown("##### 🎂 請選擇您的出生年月日")
@@ -363,9 +337,29 @@ def show_member_app():
                     c2.metric("流年運勢", f"{py}", delta=f"{cy}年")
                     st.info(f"💡 {LIFE_PATH_MEANINGS.get(data['O'], '')}")
                     # ... (顯示戰略地圖)
+                    st.markdown("#### 📍 人生戰略地圖")
+                    with st.container(border=True):
+                        st.markdown("**🌱 早年**")
+                        cols = st.columns(4)
+                        for i, code in enumerate(data['codes']['early']): cols[i].code(code)
+                        for code in data['codes']['early']:
+                            if code in PDS_CODES: st.caption(f"**{code}**: {PDS_CODES[code]}")
+                    with st.container(border=True):
+                        st.markdown("**☀️ 中年**")
+                        cols = st.columns(4)
+                        for i, code in enumerate(data['codes']['middle']):
+                            if i == 0: cols[i].error(code)
+                            else: cols[i].code(code)
+                        if data['codes']['middle'][0] in PDS_CODES: st.success(f"🚩 **坐鎮碼**: {PDS_CODES[data['codes']['middle'][0]]}")
+                    with st.container(border=True):
+                        st.markdown("**🍂 晚年**")
+                        cols = st.columns(4)
+                        for i, code in enumerate(data['codes']['late']): cols[i].code(code)
+                        for code in data['codes']['late']:
+                            if code in PDS_CODES: st.caption(f"**{code}**: {PDS_CODES[code]}")
                 except ValueError: st.error("無效日期")
 
-    # --- Daily Card (含 V17 資料庫更新) ---
+    # --- Daily Card ---
     with tab_card:
         st.markdown("<br>", unsafe_allow_html=True)
         today_record = get_today_draw(st.session_state.username)
@@ -389,8 +383,25 @@ def show_member_app():
 
     # --- Journal ---
     with tab_journal:
-        # ... (保留 V14/V16 的日記邏輯)
-        st.info("🚧 日記功能正常運作中")
+        st.markdown("#### 📔 此刻，與自己對話")
+        with st.form("j_form", clear_on_submit=True):
+            txt = st.text_area("✍️", height=200, placeholder="親愛的，今天發生了什麼事？")
+            submitted = st.form_submit_button("💾 收藏這份記憶", use_container_width=True)
+            if submitted and txt:
+                today_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                try:
+                    supabase.table("journals").insert({"username": st.session_state.username, "content": txt, "date_str": today_str}).execute()
+                    st.success("✅ 已保存！")
+                    time.sleep(1)
+                    st.rerun()
+                except: st.error("儲存失敗")
+        
+        st.divider()
+        history = get_journals(st.session_state.username)
+        if history:
+            for date_str, content in history:
+                with st.expander(f"📅 {date_str}", expanded=False):
+                    st.write(content)
 
     with tab_reader: st.info("🚧 讀者專屬功能建置中...")
     with tab_shop: st.success("🚧 商城系統籌備中...")
