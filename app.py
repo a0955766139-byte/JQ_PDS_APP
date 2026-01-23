@@ -29,13 +29,15 @@ if 'reg_otp' not in st.session_state: st.session_state.reg_otp = None
 if 'reg_data' not in st.session_state: st.session_state.reg_data = {} 
 if 'reg_last_send' not in st.session_state: st.session_state.reg_last_send = 0
 
-# --- 2. 介面優化 CSS ---
+# --- 2. 介面優化 CSS (V16 修正版：移除危險的 margin-top) ---
 st.markdown("""
     <style>
         [data-testid="stToolbar"] {visibility: hidden !important; display: none !important;}
         [data-testid="stHeader"] {visibility: hidden !important;}
         footer {visibility: hidden !important; display: none !important;}
-        .stApp { margin-top: -80px; }
+        /* 移除負邊距，避免點擊錯位 */
+        /* .stApp { margin-top: -80px; } */ 
+        
         div[data-baseweb="tab-list"] {
             gap: 0px; background-color: #f8f9fa; padding: 8px; border-radius: 50px; 
             box-shadow: inset 0 2px 4px rgba(0,0,0,0.05); margin-bottom: 20px; 
@@ -174,9 +176,9 @@ def find_username(email):
         return False, "找不到這個 Email 的註冊資料。"
     except Exception as e: return False, str(e)
 
-# 🔥🔥🔥 V15 修正版：發信函式 (含 Logs 強力追蹤) 🔥🔥🔥
+# 發信函式 (保留追蹤功能)
 def send_verification_email(to_email, otp_code, purpose="register"):
-    print(f"🚀 [Log] 開始嘗試寄信給: {to_email} (Purpose: {purpose})") # 這裡會顯示在 Render Logs
+    print(f"🚀 [Log] 開始嘗試寄信給: {to_email} (Purpose: {purpose})")
     
     smtp_server = "smtp.gmail.com"
     smtp_port = 587
@@ -184,7 +186,6 @@ def send_verification_email(to_email, otp_code, purpose="register"):
     sender_email = None
     sender_password = None
     
-    # 1. 優先嘗試從 secrets 讀取
     try:
         if st.secrets.get("email"):
             sender_email = st.secrets["email"]["sender"]
@@ -192,23 +193,12 @@ def send_verification_email(to_email, otp_code, purpose="register"):
     except:
         pass 
 
-    # 2. 嘗試從環境變數讀取
-    if not sender_email:
-        sender_email = os.environ.get("EMAIL_SENDER")
-    if not sender_password:
-        sender_password = os.environ.get("EMAIL_PASSWORD")
+    if not sender_email: sender_email = os.environ.get("EMAIL_SENDER")
+    if not sender_password: sender_password = os.environ.get("EMAIL_PASSWORD")
 
-    # 3. 防呆檢查與 Log
-    if not sender_email:
-        print("❌ [Log] 失敗：EMAIL_SENDER 未設定")
-        return False, "❌ 系統錯誤：Render 環境變數 EMAIL_SENDER 未設定"
+    if not sender_email or not sender_password:
+        return False, "❌ 系統錯誤：Render 環境變數未設定"
     
-    if not sender_password:
-         print("❌ [Log] 失敗：EMAIL_PASSWORD 未設定")
-         return False, "❌ 系統錯誤：Render 環境變數 EMAIL_PASSWORD 未設定"
-    
-    print(f"ℹ️ [Log] 使用寄件帳號: {sender_email}") # 確認抓到了什麼帳號
-
     if purpose == "register":
         subject = "【喬鈞心學】歡迎註冊 - 您的驗證碼"
         content_text = f"歡迎來到喬鈞心學！\n\n您的註冊驗證碼是：【 {otp_code} 】\n\n請回到網頁輸入此代碼以完成註冊。"
@@ -223,22 +213,14 @@ def send_verification_email(to_email, otp_code, purpose="register"):
     msg.attach(MIMEText(content_text, 'plain'))
 
     try:
-        print("🔄 [Log] 正在連線 SMTP...")
         server = smtplib.SMTP(smtp_server, smtp_port)
         server.starttls()
-        
-        print("🔐 [Log] 正在登入...")
         server.login(sender_email, sender_password)
-        
-        print("📨 [Log] 正在發送...")
         server.sendmail(sender_email, to_email, msg.as_string())
-        
-        print("✅ [Log] 寄信成功！")
         server.quit()
         return True, "📧 驗證碼已發送至您的信箱！"
     except Exception as e:
-        print(f"❌ [Log] 寄信發生錯誤: {str(e)}") # 這裡會把詳細錯誤印出來
-        return False, f"寄信失敗 (請檢查 Render Logs): {e}"
+        return False, f"寄信失敗: {e}"
 
 # --- 6. 頁面視圖 ---
 def show_login_page():
@@ -246,7 +228,6 @@ def show_login_page():
     with col1:
         st.markdown("# 👁️ 歡迎來到喬鈞心學")
         st.markdown("### 探索你到底是什麼模樣，解開生命的原始設定。")
-        # 🔥 V15 關鍵修正：width="stretch" (修正之前寫錯的 None)
         st.image("https://images.unsplash.com/photo-1517842645767-c639042777db?q=80&w=2670&auto=format&fit=crop", caption="數字是世界通用的語言。", width="stretch")
         st.markdown("### 什麼是數字心理學？")
         st.info("這不只是算命，而是一套結合了畢達哥拉斯數學與現代心理學的行為分析系統。幫助你看見天賦、理解挑戰、規劃未來。")
@@ -259,7 +240,6 @@ def show_login_page():
             st.header("🔐 會員專區")
             tab1, tab2 = st.tabs(["登入", "註冊新帳號"])
             
-            # --- Tab 1: 登入 ---
             with tab1:
                 if st.session_state.login_view == 'login':
                     st.write("")
@@ -282,7 +262,6 @@ def show_login_page():
                             st.session_state.login_view = 'recovery' 
                             st.rerun()
                 else:
-                    # 救援模式
                     st.markdown("##### 🛠️ 帳號救援中心")
                     if st.button("🔙 返回登入頁面", use_container_width=True):
                         st.session_state.login_view = 'login'
@@ -342,7 +321,6 @@ def show_login_page():
                                         st.rerun()
                                     except Exception as e: st.error(f"更新失敗: {e}")
             
-            # --- Tab 2: 註冊新帳號 ---
             with tab2:
                 if st.session_state.reg_phase == 'input':
                     st.write("")
@@ -403,38 +381,64 @@ def show_member_app():
             st.rerun()
             
     tab_pds, tab_card, tab_journal, tab_reader, tab_shop = st.tabs(["🧬 天賦運勢", "🔮 每日指引卡", "📔 日記", "📜 讀者專屬", "🛒 商城"])
+    
+    # --- Tab PDS: 天賦運勢 (V16 改用下拉選單) ---
     with tab_pds:
         with st.container(border=True):
-            bd = st.date_input("出生年月日", value=datetime.date(1983, 9, 8), min_value=datetime.date(1900, 1, 1), max_value=datetime.date.today())
+            st.markdown("##### 🎂 請選擇您的出生年月日")
+            c_y, c_m, c_d = st.columns([1, 1, 1])
+            
+            # 年份：1900 ~ 2025 (預設 1983)
+            with c_y:
+                years = list(range(1900, 2026))
+                sel_year = st.selectbox("年", years, index=years.index(1983))
+            
+            # 月份：1 ~ 12 (預設 9)
+            with c_m:
+                months = list(range(1, 13))
+                sel_month = st.selectbox("月", months, index=months.index(9))
+            
+            # 日期：1 ~ 31 (預設 8)
+            with c_d:
+                days = list(range(1, 32))
+                sel_day = st.selectbox("日", days, index=days.index(8))
+            
             run_btn = st.button("🚀 開始分析", type="primary", use_container_width=True)
+
         if run_btn:
-            data = calculate_pds_full_codes(bd)
-            py, cy = calculate_personal_year(bd)
-            st.markdown("---")
-            c1, c2 = st.columns(2)
-            c1.metric("主命數", f"{data['O']} 號")
-            c2.metric("流年運勢", f"{py}", delta=f"{cy}年")
-            st.info(f"💡 {LIFE_PATH_MEANINGS.get(data['O'], '')}")
-            st.markdown("#### 📍 人生戰略地圖")
-            with st.container(border=True):
-                st.markdown("**🌱 早年**")
-                cols = st.columns(4)
-                for i, code in enumerate(data['codes']['early']): cols[i].code(code)
-                for code in data['codes']['early']:
-                    if code in PDS_CODES: st.caption(f"**{code}**: {PDS_CODES[code]}")
-            with st.container(border=True):
-                st.markdown("**☀️ 中年**")
-                cols = st.columns(4)
-                for i, code in enumerate(data['codes']['middle']):
-                    if i == 0: cols[i].error(code)
-                    else: cols[i].code(code)
-                if data['codes']['middle'][0] in PDS_CODES: st.success(f"🚩 **坐鎮碼**: {PDS_CODES[data['codes']['middle'][0]]}")
-            with st.container(border=True):
-                st.markdown("**🍂 晚年**")
-                cols = st.columns(4)
-                for i, code in enumerate(data['codes']['late']): cols[i].code(code)
-                for code in data['codes']['late']:
-                    if code in PDS_CODES: st.caption(f"**{code}**: {PDS_CODES[code]}")
+            # 檢查日期是否合法 (防止選到 2/30 這種怪日期)
+            try:
+                bd = datetime.date(sel_year, sel_month, sel_day)
+            except ValueError:
+                st.error("❌ 日期無效！請檢查是否有不存在的日期（例如 2月30日）。")
+            else:
+                data = calculate_pds_full_codes(bd)
+                py, cy = calculate_personal_year(bd)
+                st.markdown("---")
+                c1, c2 = st.columns(2)
+                c1.metric("主命數", f"{data['O']} 號")
+                c2.metric("流年運勢", f"{py}", delta=f"{cy}年")
+                st.info(f"💡 {LIFE_PATH_MEANINGS.get(data['O'], '')}")
+                st.markdown("#### 📍 人生戰略地圖")
+                with st.container(border=True):
+                    st.markdown("**🌱 早年**")
+                    cols = st.columns(4)
+                    for i, code in enumerate(data['codes']['early']): cols[i].code(code)
+                    for code in data['codes']['early']:
+                        if code in PDS_CODES: st.caption(f"**{code}**: {PDS_CODES[code]}")
+                with st.container(border=True):
+                    st.markdown("**☀️ 中年**")
+                    cols = st.columns(4)
+                    for i, code in enumerate(data['codes']['middle']):
+                        if i == 0: cols[i].error(code)
+                        else: cols[i].code(code)
+                    if data['codes']['middle'][0] in PDS_CODES: st.success(f"🚩 **坐鎮碼**: {PDS_CODES[data['codes']['middle'][0]]}")
+                with st.container(border=True):
+                    st.markdown("**🍂 晚年**")
+                    cols = st.columns(4)
+                    for i, code in enumerate(data['codes']['late']): cols[i].code(code)
+                    for code in data['codes']['late']:
+                        if code in PDS_CODES: st.caption(f"**{code}**: {PDS_CODES[code]}")
 
     with tab_card:
         st.markdown("<br>", unsafe_allow_html=True)
