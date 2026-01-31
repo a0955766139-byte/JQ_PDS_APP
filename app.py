@@ -5,14 +5,13 @@ import time
 import random
 from supabase import create_client, Client
 
-# --- 關鍵改變：匯入 View 模組 ---
-# 確保你有建立 views/__init__.py，否則這裡會報錯
+# --- 匯入 View 模組 ---
 try:
     from views import tab_life_map
 except ImportError as e:
     st.error(f"⚠️ 模組匯入失敗：{e}。請檢查 views 資料夾結構與 __init__.py 是否存在。")
 
-# 匯入其他資源 (Tab 2-5 暫時保留在此，後續可依樣畫葫蘆分拆)
+# 匯入其他資源
 try:
     from databases.card_rules import DIVINATION_CARDS
 except ImportError:
@@ -27,13 +26,12 @@ if 'username' not in st.session_state: st.session_state.username = ""
 if 'user_email' not in st.session_state: st.session_state.user_email = ""
 if 'user_profile' not in st.session_state: st.session_state.user_profile = None
 
-# --- 2. CSS 全局設定 (Tab 樣式與通用按鈕) ---
+# --- 2. CSS 全局設定 ---
 st.markdown("""
     <style>
         [data-testid="stToolbar"] {visibility: hidden !important;}
         footer {visibility: hidden !important;}
         
-        /* Tab 優化 */
         div[data-baseweb="tab-list"] {
             gap: 0px; background-color: #f8f9fa; padding: 8px; border-radius: 50px; 
             margin-bottom: 20px; box-shadow: inset 0 2px 4px rgba(0,0,0,0.05);
@@ -47,7 +45,6 @@ st.markdown("""
             color: white !important; box-shadow: 0 4px 15px rgba(106, 48, 147, 0.3);
         }
         
-        /* Line 按鈕 */
         .line-btn {
             display: flex; align-items: center; justify-content: center;
             width: 100%; background-color: #06C755; color: white !important; 
@@ -58,7 +55,6 @@ st.markdown("""
         .line-btn:hover { background-color: #05b34c; }
         .line-btn img { margin-right: 10px; height: 24px; width: 24px; filter: brightness(0) invert(1); }
 
-        /* 其他 Tab 的樣式暫時保留在此 (divination-card, journal-entry) */
         .divination-card { background: white; border-radius: 15px; padding: 25px; box-shadow: 0 8px 20px rgba(0,0,0,0.1); text-align: center; border: 1px solid #eee; margin-top: 10px; }
         .divination-img { width: 100%; max-height: 350px; object-fit: cover; border-radius: 12px; margin-bottom: 20px; }
         .divination-title { font-size: 26px; font-weight: bold; color: #2b3066; margin-bottom: 10px; }
@@ -68,24 +64,40 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# --- 3. 資料庫連線 (App Level) ---
+# --- 3. 資料庫連線 (支援雲端環境變數) ---
 @st.cache_resource
 def init_connection():
-    try:
-        url = st.secrets["supabase"]["url"]
-        key = st.secrets["supabase"]["key"]
+    url = os.environ.get("SUPABASE_URL")
+    key = os.environ.get("SUPABASE_KEY")
+    
+    # 本地備援：如果環境變數沒抓到，嘗試讀取 secrets.toml
+    if not url or not key:
+        try:
+            url = st.secrets["supabase"]["url"]
+            key = st.secrets["supabase"]["key"]
+        except: pass
+        
+    if url and key:
         return create_client(url, key)
-    except: return None
+    return None
 
 supabase = init_connection()
 
-# --- 4. 身份驗證邏輯 ---
+# --- 4. 身份驗證邏輯 (修復 LINE 登入) ---
 def get_line_auth_url():
-    try:
-        cid = st.secrets["line"]["channel_id"]
-        redir = st.secrets["line"].get("redirect_uri", "https://jq-pds-app.onrender.com")
-        return f"https://access.line.me/oauth2/v2.1/authorize?response_type=code&client_id={cid}&redirect_uri={redir}&state=pds&scope=profile%20openid%20email"
-    except: return None
+    cid = os.environ.get("LINE_CHANNEL_ID")
+    
+    # 本地備援
+    if not cid:
+        try: cid = st.secrets["line"]["channel_id"]
+        except: pass
+    
+    if not cid: return None
+
+    # 取得 Redirect URI (優先讀取環境變數，否則使用預設)
+    redir = os.environ.get("LINE_REDIRECT_URI", "https://jq-pds-app.onrender.com")
+    
+    return f"https://access.line.me/oauth2/v2.1/authorize?response_type=code&client_id={cid}&redirect_uri={redir}&state=pds&scope=profile%20openid%20email"
 
 def handle_line_callback():
     if "code" in st.query_params:
@@ -97,8 +109,7 @@ def handle_line_callback():
 
 def login_user(u, p): return True if u and p else False
 
-# --- 5. 舊有功能函式 (Tab 2-5 暫時保留) ---
-# 為了不讓程式崩潰，這些函式先留著，直到我們把 Tab 2-5 也重構出去
+# --- 5. 舊有功能函式 ---
 def check_db_today_draw(username):
     if not supabase: return None
     try:
@@ -154,19 +165,15 @@ def show_login_page():
                 if st.button("登入系統", type="primary", use_container_width=True):
                     if login_user(u, p): st.session_state.logged_in = True; st.session_state.username = u; st.rerun()
 
-# --- 7. 會員主程式 (指揮中心) ---
+# --- 7. 會員主程式 ---
 def show_member_app():
     st.markdown(f"**Hi, {st.session_state.username}** | 九能量導航系統")
     
-    # 建立 5 個分頁
     tab1, tab2, tab3, tab4, tab5 = st.tabs(["🧬 人生地圖", "🔮 宇宙指引", "📔 靈魂日記", "📜 讀者專區", "🛒 能量商城"])
     
-    # === Tab 1: 人生地圖 (已重構) ===
     with tab1:
-        # ✅ 只有這一行！細節全部交給 views/tab_life_map.py
         tab_life_map.render()
 
-    # === Tab 2: 宇宙指引 (待重構) ===
     with tab2:
         st.markdown("### 🔮 連結你的宇宙指引")
         saved_card = check_db_today_draw(st.session_state.username)
@@ -191,7 +198,6 @@ def show_member_app():
                     card = random.choice(DIVINATION_CARDS); save_db_draw(st.session_state.username, card); st.balloons(); st.rerun()
                 else: st.warning("⚠️ 牌卡資料庫未載入")
 
-    # === Tab 3: 日記 (待重構) ===
     with tab3:
         st.markdown("### 📔 靈魂書寫")
         with st.form("journal_form"):
@@ -204,7 +210,6 @@ def show_member_app():
             for j in journals: st.markdown(f"""<div class='journal-entry'><div class='journal-date'>{j[1]}</div><div class='journal-content'>{j[0]}</div></div>""", unsafe_allow_html=True)
         else: st.info("目前還沒有日記...")
 
-    # === Tab 4 & 5 (待重構) ===
     with tab4: st.info("📖 這是《九能量》實體書讀者的專屬區域"); st.text_input("請輸入靈魂代碼"); st.button("🔓 解鎖內容")
     with tab5: st.success("🚧 商城系統籌備中")
 
