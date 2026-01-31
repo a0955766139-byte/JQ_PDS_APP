@@ -1,2 +1,6 @@
 streamlit
 supabase
+pandas
+requests
+Pillow  <-- 這一行一定要有！(PIL 的安裝名稱是 Pillow)
+xpinyin
