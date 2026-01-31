@@ -114,6 +114,7 @@ def check_db_today_draw(username):
     if not supabase: return None
     try:
         today = datetime.date.today().isoformat()
+        # 補上後面斷掉的 ("draw_date", today).execute()
         res = supabase.table("daily_draws").select("*").eq("username", username).eq("draw_date", today).execute()
         return res.data[0] if res.data else None
     except: return None
