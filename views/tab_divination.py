@@ -115,8 +115,18 @@ def inject_custom_css():
 
 @st.cache_resource
 def init_supabase():
-    url = st.secrets["supabase"]["url"]
-    key = st.secrets["supabase"]["key"]
+    # 優先從環境變數讀取 (Render 模式)
+    url = os.environ.get("SUPABASE_URL")
+    key = os.environ.get("SUPABASE_KEY")
+    
+    # 如果環境變數不存在，才嘗試讀取 st.secrets (本地模式)
+    if not url or not key:
+        try:
+            url = st.secrets["supabase"]["url"]
+            key = st.secrets["supabase"]["key"]
+        except:
+            st.error("🚫 找不到 Supabase 金鑰配置")
+            return None
     return create_client(url, key)
 
 supabase = init_supabase()

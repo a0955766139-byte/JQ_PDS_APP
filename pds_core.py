@@ -145,3 +145,54 @@ def calculate_chart(birthdate, eng_name):
             'I': tri['地基']['I'], 'J': tri['地基']['J'], 'K': tri['地基']['K'], 'L': tri['地基']['L']
         }
     }
+
+# ==========================================
+# 5. 家族動力運算
+# ==========================================
+def calculate_family_dynamics(members_data):
+    """
+    計算家族集體能量與和解建議
+    members_data: List of dicts [{"name": str, "params": dict}, ...]
+    """
+    # 1. 統計 1-9 能量雷達分佈
+    radar_counts = {i: 0 for i in range(1, 10)}
+    total_weight = 0
+    
+    for member in members_data:
+        p = member['params']
+        # 主命數 (O) 權重設為 3
+        radar_counts[p['O']] += 3
+        # 其他位置 (M, N, I, J, K, L) 權重為 1
+        for k in ['M', 'N', 'I', 'J', 'K', 'L']:
+            radar_counts[p[k]] += 1
+        total_weight += 9 # 3 + 6個位置
+
+    radar_percent = {k: round((v / total_weight) * 100, 1) for k, v in radar_counts.items()}
+
+    # 2. 生成和解對話模版 (利他語法)
+    reconciliation_tips = []
+    scripts = {
+        1: "「我看到你的獨立與堅持，這份力量撐起了家，謝謝你的承擔。」",
+        2: "「我感受到你的細膩與體貼，謝謝你溫柔地接住大家的感受。」",
+        8: "「我察覺到你的責任感讓你壓力很大，沒關係，這份擔子我們可以一起扛。」"
+    }
+
+    # 關係衝突掃描 (以 A 的制約對應 B 的主命)
+    for i, A in enumerate(members_data):
+        for j, B in enumerate(members_data):
+            if i == j: continue
+            
+            # 當 A 的壓力點(制約M) 遇到 B 的核心行為(主命O)
+            if A['params']['M'] == B['params']['O']:
+                num = B['params']['O']
+                reconciliation_tips.append({
+                    "from": A['name'],
+                    "to": B['name'],
+                    "trigger_num": num,
+                    "script": scripts.get(num, f"「我察覺到你的 {num} 號能量正在閃耀，我也在學習如何與這份力量和諧共處。」")
+                })
+
+    return {
+        "radar_data": radar_percent,
+        "tips": reconciliation_tips
+    }
