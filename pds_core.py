@@ -196,3 +196,4 @@ def calculate_family_dynamics(members_data):
         "radar_data": radar_percent,
         "tips": reconciliation_tips
     }
+    

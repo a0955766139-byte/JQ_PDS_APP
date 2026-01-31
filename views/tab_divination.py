@@ -2,6 +2,7 @@ import streamlit as st
 import datetime
 import random
 import pandas as pd
+import os
 from supabase import create_client, Client
 
 # ==============================================================================
