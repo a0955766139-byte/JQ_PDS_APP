@@ -3,6 +3,7 @@ import streamlit as st
 import datetime
 import time
 import requests
+from views import tab_member
 from supabase import create_client, Client
 
 # ==============================================================================
@@ -159,15 +160,24 @@ def show_member_app():
             st.rerun()
             
     st.markdown(f"**Hi, {st.session_state.username}** | 九能量導航系統")
-    tab1, tab2, tab3, tab4, tab5 = st.tabs(["🧬 人生地圖", "🔮 宇宙指引", "📔 靈魂日記", "📜 讀者專區", "🛒 能量商城"])
     
+    # 定義六大分頁
+    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
+        "🧬 人生地圖", 
+        "🔮 宇宙指引", 
+        "📔 靈魂日記", 
+        "👨‍👩‍👧‍👦 家族矩陣", 
+        "🛒 能量商城", 
+        "👤 會員中心"
+    ])
+    
+    # === Tab 1: 人生地圖 ===
     with tab1: tab_life_map.render()
 
-    # === Tab 2: 宇宙指引 (重構對接版) ===
-    with tab2:
-        # ✅ 舊邏輯已清空，全權交給模組處理
-        tab_divination.render_divination_view()
+    # === Tab 2: 宇宙指引 ===
+    with tab2: tab_divination.render_divination_view()
 
+    # === Tab 3: 靈魂日記 (目前尚未模組化，維持原樣) ===
     with tab3:
         st.markdown("### 📔 靈魂書寫")
         with st.form("journal_form"):
@@ -176,10 +186,18 @@ def show_member_app():
                 if save_journal(st.session_state.username, j_content):
                     st.success("日記已保存"); time.sleep(1); st.rerun()
         journals = get_journals(st.session_state.username)
-        for j in journals: st.markdown(f"""<div class='journal-entry'><small>{j[1]}</small><br>{j[0]}</div>""", unsafe_allow_html=True)
+        for j in journals: 
+            st.markdown(f"<div class='journal-entry'><small>{j[1]}</small><br>{j[0]}</div>", unsafe_allow_html=True)
 
+    # === Tab 4: 家族矩陣 (暫時顯示說明，等待二世開發前端) ===
     with tab4: st.info("📖 這是《九能量》實體書讀者的專屬區域")
+
+    # === Tab 5: 商城 (籌備中) ===
     with tab5: st.success("🚧 商城系統籌備中")
+    
+    # === Tab 6: 會員中心 (修正點) ===
+    with tab6: 
+        tab_member.render()
 
 # ==============================================================================
 # 5. 程式進入點
