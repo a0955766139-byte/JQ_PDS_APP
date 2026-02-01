@@ -1,6 +1,7 @@
 import streamlit as st
 import datetime
 import os
+import time  # <--- ✅ 補上這一行，不然等一下按保存會崩潰！
 from supabase import create_client
 
 # --- 資料庫連線 (標準化) ---
@@ -81,7 +82,7 @@ def render():
                     st.session_state.user_profile['full_name'] = new_name
                     st.session_state.user_profile['english_name'] = new_eng
                     st.session_state.user_profile['birth_date'] = new_bd.isoformat()
-                    time.sleep(1)
+                    time.sleep(1) # <--- 這裡需要 import time
                     st.rerun()
 
     st.divider()
