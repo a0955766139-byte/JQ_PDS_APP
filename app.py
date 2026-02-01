@@ -3,7 +3,6 @@ import streamlit as st
 import datetime
 import time
 import requests
-from views import tab_member
 from supabase import create_client, Client
 
 # ==============================================================================
@@ -11,7 +10,10 @@ from supabase import create_client, Client
 # ==============================================================================
 try:
     from views import tab_life_map
-    from views import tab_divination  # ✅ 成功對接宇宙指引模組
+    from views import tab_family_matrix  # ✅ 新增：家族矩陣模組
+    from views import tab_member         # 會員中心
+    # from views import tab_home         # (註解：如果你還沒建立 tab_home.py，先不要打開這行，以免報錯)
+    from views import tab_divination     # 宇宙指引
 except ImportError as e:
     st.error(f"⚠️ 核心模組匯入失敗：{e}")
 
@@ -153,32 +155,49 @@ def show_login_page():
             st.text_input("帳號 (傳統登入功能籌備中)", disabled=True)
 
 def show_member_app():
+    # Sidebar
     with st.sidebar:
         st.markdown(f"### 👤 {st.session_state.username}")
         if st.button("🚪 登出系統", use_container_width=True):
             st.session_state.logged_in = False
             st.rerun()
-            
+
+    # Main Area
     st.markdown(f"**Hi, {st.session_state.username}** | 九能量導航系統")
     
-    # 定義六大分頁
+    # 定義六大分頁 (這裡修正了重複定義的問題，只保留這一組)
     tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
+        "🏠 首頁",          # 原本是 "人聲地圖" 重複，我建議 Tab1 當作 Dashboard 或首頁
         "🧬 人生地圖", 
         "🔮 宇宙指引", 
+        "👨‍👩‍👧‍👦 家族矩陣",     # 這裡換上新功能
         "📔 靈魂日記", 
-        "👨‍👩‍👧‍👦 家族矩陣", 
-        "🛒 能量商城", 
         "👤 會員中心"
     ])
     
-    # === Tab 1: 人生地圖 ===
-    with tab1: tab_life_map.render()
+    # === Tab 1: 首頁 (Dashboard) ===
+    with tab1: 
+        # 如果你有 tab_home.py 可以用 tab_home.render()
+        # 目前先顯示簡單歡迎
+        st.subheader(f"歡迎回到能量中心，{st.session_state.username}")
+        st.info("請從上方分頁選擇您要進行的探索。")
 
-    # === Tab 2: 宇宙指引 ===
-    with tab2: tab_divination.render_divination_view()
+    # === Tab 2: 人生地圖 ===
+    with tab2: tab_life_map.render()
 
-    # === Tab 3: 靈魂日記 (目前尚未模組化，維持原樣) ===
-    with tab3:
+    # === Tab 3: 宇宙指引 ===
+    with tab3: tab_divination.render_divination_view()
+
+    # === Tab 4: 家族矩陣 (✅ 這裡呼叫五世的新傑作) ===
+    with tab4: 
+        # 呼叫 views/tab_family_matrix.py 裡的 render 函式
+        try:
+            tab_family_matrix.render() 
+        except Exception as e:
+            st.error(f"家族矩陣渲染錯誤: {e}")
+
+    # === Tab 5: 靈魂日記 ===
+    with tab5:
         st.markdown("### 📔 靈魂書寫")
         with st.form("journal_form"):
             j_content = st.text_area("寫下你的心情、覺察...", height=150)
@@ -188,14 +207,8 @@ def show_member_app():
         journals = get_journals(st.session_state.username)
         for j in journals: 
             st.markdown(f"<div class='journal-entry'><small>{j[1]}</small><br>{j[0]}</div>", unsafe_allow_html=True)
-
-    # === Tab 4: 家族矩陣 (暫時顯示說明，等待二世開發前端) ===
-    with tab4: st.info("📖 這是《九能量》實體書讀者的專屬區域")
-
-    # === Tab 5: 商城 (籌備中) ===
-    with tab5: st.success("🚧 商城系統籌備中")
     
-    # === Tab 6: 會員中心 (修正點) ===
+    # === Tab 6: 會員中心 ===
     with tab6: 
         tab_member.render()
 

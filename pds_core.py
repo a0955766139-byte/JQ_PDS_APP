@@ -158,3 +158,47 @@ def calculate_family_dynamics(members_data):
                     "script": scripts.get(num, f"「我察覺到你的 {num} 號能量正在閃耀...」")
                 })
     return {"radar_data": radar_percent, "tips": reconciliation_tips}
+
+def calculate_family_dynamics(members):
+    """
+    計算家族成員之間的動力關係
+    回傳格式: {'tips': [{'to': 'Name', 'script': 'Message'}]}
+    """
+    tips = []
+    
+    # 如果只有一個人
+    if len(members) < 2:
+        return {
+            'tips': [{
+                'to': members[0]['name'], 
+                'script': "自己與自己的對話，是所有關係的起點。看著這個雷達圖，哪一個面向是你目前最強大的支柱？"
+            }]
+        }
+    
+    # 簡單的兩兩關係分析 (以第一個人為主詞，對其他人說話)
+    main_person = members[0]
+    others = members[1:]
+    
+    for other in others:
+        mp_o = main_person['params']['O']
+        op_o = other['params']['O']
+        
+        diff = abs(mp_o - op_o)
+        msg = ""
+        
+        # 簡單的生剋邏輯示意 (您可以換成更複雜的邏輯)
+        if mp_o == op_o:
+            msg = f"你們是鏡像關係 ({mp_o}號)。你看對方不順眼的地方，通常是你自己還沒接納的部分；你欣賞對方的，也是你擁有的天賦。"
+        elif (mp_o + op_o) == 10: # 例如 1+9, 2+8
+            msg = f"你們是互補關係 ({mp_o} vs {op_o})。這是一場靈魂的合作，對方的強項剛好彌補你的盲點，請學會依賴對方。"
+        elif diff % 3 == 0: # 3-6-9, 1-4-7
+            msg = f"你們擁有相似的能量流動頻率。溝通起來應該很順暢，是能夠互相充電的好夥伴。"
+        else:
+            msg = f"你們來自不同的能量維度。這段關係是來擴張你的舒適圈的，試著用對方的視角看世界。"
+            
+        tips.append({
+            'to': other['name'],
+            'script': msg
+        })
+        
+    return {'tips': tips}    
