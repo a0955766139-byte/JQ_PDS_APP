@@ -63,15 +63,14 @@ def _delete_chart(chart_id):
     try: supabase.table("saved_charts").delete().eq("id", chart_id).execute()
     except: pass
 
-# --- SVG 繪圖 ---
+# --- SVG 繪圖 (維持不變) ---
 def _draw_pyramid_svg(d):
     p = d.get('params', d) 
     anchor = d.get('anchor', f"{p.get('M',0)}{p.get('N',0)}{p.get('O',0)}")
     return f"""<svg viewBox="0 0 500 380" style="width:100%; max-width:480px; margin: 0 auto; display: block; font-family: sans-serif;"><defs><linearGradient id="grad1" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" style="stop-color:#6a3093;" /><stop offset="100%" style="stop-color:#a044ff;" /></linearGradient></defs><path d="M250,30 L50,230 L450,230 Z" fill="none" stroke="#6a3093" stroke-opacity="0.3"/><circle cx="250" cy="70" r="28" fill="#FFD700" stroke="#fff" stroke-width="3"/><text x="250" y="79" font-size="26" font-weight="900" fill="#333" text-anchor="middle">{p['O']}</text><text x="250" y="32" font-size="11" fill="#999" text-anchor="middle">主命數</text><circle cx="180" cy="170" r="24" fill="#fff" stroke="#6a3093" stroke-width="2"/><text x="180" y="179" font-size="22" font-weight="bold" fill="#333" text-anchor="middle">{p['M']}</text><circle cx="320" cy="170" r="24" fill="#fff" stroke="#6a3093" stroke-width="2"/><text x="320" y="179" font-size="22" font-weight="bold" fill="#333" text-anchor="middle">{p['N']}</text><g transform="translate(0, 50)"><text x="250" y="270" font-size="12" fill="#999" text-anchor="middle" letter-spacing="3">坐鎮碼</text><text x="250" y="315" font-size="48" font-weight="900" fill="url(#grad1)" text-anchor="middle">{anchor}</text></g></svg>"""
 
-# --- HTML 報告產生器 ---
+# --- HTML 報告產生器 (維持不變) ---
 def _generate_report_html(name, eng, bd, chart, svg_code):
-    # 防呆：如果尚未有 temperament 欄位，給予預設值
     temp_str = chart.get('temperament', '0-0-0-0')
     t = temp_str.split('-')
     
@@ -115,33 +114,52 @@ def render():
     username = st.session_state.username
     with st.sidebar:
         st.header("🗂️ 檔案管理")
-        mode = st.radio("選擇模式", ["我的本命盤", "親友檔案庫", "➕ 新增查詢"])
+        # ✅ V20.17 優化：文字更直覺，將「新增查詢」改為「新增親友」
+        mode = st.radio("選擇模式", ["我的本命盤", "📂 親友檔案庫", "➕ 新增親友"], index=0)
+        
         selected_profile = None
         if mode == "我的本命盤":
             selected_profile = _get_my_profile(username)
-        elif mode == "親友檔案庫":
+        elif mode == "📂 親友檔案庫":
             saved_list = _get_saved_charts(username)
             if saved_list:
                 sel = st.selectbox("選擇親友", options=[f"{p['name']} ({p['birth_date']})" for p in saved_list])
-                # ✅ 關鍵修復：加上括號 () 解決 Syntax Error
                 selected_profile = next((p for p in saved_list if f"{p['name']} ({p['birth_date']})" == sel), None)
                 
                 if selected_profile:
                      with st.popover("🗑️ 刪除此檔案"):
                         if st.button("確認刪除", type="primary"):
                             _delete_chart(selected_profile['id']); st.rerun()
-        else: selected_profile = "NEW"
+            else:
+                st.info("目前沒有存檔，請選擇「➕ 新增親友」。")
+        else: # mode == "➕ 新增親友"
+            selected_profile = "NEW"
 
+    # --- 顯示區塊 ---
     if selected_profile == "NEW" or (mode == "我的本命盤" and selected_profile is None):
-        st.subheader("📝 輸入導航資料")
+        if mode == "我的本命盤":
+            st.subheader("📝 建立我的原始設定")
+        else:
+            st.subheader("📝 新增親友檔案")
+            
         with st.container(border=True):
-            name = st.text_input("姓名", value=username if mode=="我的本命盤" else "")
+            # 依據模式自動帶入姓名
+            def_name = username if mode=="我的本命盤" else ""
+            
+            name = st.text_input("姓名", value=def_name)
             eng = st.text_input("英文名 (拼音)")
             bd_input = st.date_input("出生日期", datetime.date(1983, 9, 8))
-            if st.button("🚀 啟動導航", type="primary", use_container_width=True):
+            
+            btn_text = "🚀 更新我的資料" if mode == "我的本命盤" else "💾 存檔並計算"
+            
+            if st.button(btn_text, type="primary", use_container_width=True):
                 _save_chart(username, name, eng, bd_input, is_me=(mode == "我的本命盤"))
+                st.toast("✅ 資料已保存！", icon="🎉")
+                time.sleep(1)
                 st.rerun()
+
     elif selected_profile:
+        # 顯示報告
         p = selected_profile
         # 日期相容性處理
         if 'birth_date' in p:
@@ -154,5 +172,4 @@ def render():
         chart = pds_core.calculate_chart(bd, p.get('english_name', ''))
         svg = _draw_pyramid_svg({'params': chart['svg_params'], 'anchor': chart['anchor']})
         
-        # ✅ 關鍵修復：加入 unsafe_allow_html=True 解決 HTML 原始碼外露
         st.markdown(_generate_report_html(p['name'], p.get('english_name',''), bd, chart, svg), unsafe_allow_html=True)
