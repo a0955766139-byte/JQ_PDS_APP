@@ -3,6 +3,7 @@ import datetime
 import os
 import time
 from supabase import create_client
+from pypinyin import pinyin, Style  # 引入拼音套件
 
 # 引入 UI 模組
 from views import life_map_ui
@@ -21,6 +22,28 @@ def init_connection():
     return None
 
 supabase = init_connection()
+
+# --- 輔助函式：自動生成威妥碼拼音 ---
+def _auto_generate_english_name(chinese_name):
+    """
+    將中文姓名轉換為威妥碼拼音 (Wade-Giles)
+    例如：游喬鈞 -> Yu Chiao Chun
+    """
+    if not chinese_name: return ""
+    try:
+        # 使用 pypinyin 套件進行轉換
+        # heteronym=False: 不啟用多音字模式，避免回傳太多選項
+        # style=Style.WADEGILES: 指定威妥碼拼音
+        pinyin_list = pinyin(chinese_name, style=Style.WADEGILES, heteronym=False)
+        
+        # 處理結果：將 list of lists 轉為字串
+        # pinyin 回傳格式為 [['yu'], ['chiao'], ['chun']]
+        # 我們將其轉換為 "Yu Chiao Chun" (首字母大寫)
+        english_parts = [item[0].capitalize() for item in pinyin_list]
+        return " ".join(english_parts)
+    except Exception as e:
+        print(f"Translation Error: {e}")
+        return ""
 
 # --- 資料存取函式 ---
 def _get_my_profile(username):
@@ -47,21 +70,57 @@ def _get_saved_charts(username):
     except: return []
 
 def _save_chart(username, name, eng, bd, category, uid=None, is_me=False):
-    if not supabase: return
+    if not supabase: 
+        st.error("❌ 資料庫未連線")
+        return
+
     try:
         bd_str = bd.isoformat()
+        final_category = category if category else "未分類"
+
+        # --- [關鍵功能] 自動補全英文名 ---
+        # 如果使用者沒有輸入英文名 (eng 為空字串或 None)，則自動翻譯
+        final_eng = eng
+        if not final_eng or not final_eng.strip():
+            final_eng = _auto_generate_english_name(name)
+            # 可以在這裡加一個提示，告訴用戶系統幫他做了什麼
+            if final_eng:
+                st.toast(f"🪄 已自動為您生成英文名：{final_eng}")
+        # --------------------------------
+
+        data_payload = {
+            "user_id": username, 
+            "name": name, 
+            "english_name": final_eng, 
+            "birth_date": bd_str, 
+            "category": final_category
+        }
+
         if is_me:
-            supabase.table("users").upsert({"username": username, "full_name": name, "english_name": eng, "birth_date": bd_str}, on_conflict="username").execute()
+            # 更新本人
+            supabase.table("users").upsert({
+                "username": username, 
+                "full_name": name, 
+                "english_name": final_eng, 
+                "birth_date": bd_str
+            }, on_conflict="username").execute()
+            st.toast("✅ 本人資料已更新")
+        
         else:
+            # 更新/新增 親友
             if uid:
-                supabase.table("saved_charts").update({
-                    "name": name, "english_name": eng, "birth_date": bd_str, "category": category
-                }).eq("id", uid).execute()
+                supabase.table("saved_charts").update(data_payload).eq("id", uid).execute()
+                st.toast("✅ 親友資料已更新")
             else:
-                supabase.table("saved_charts").insert({
-                    "user_id": username, "name": name, "english_name": eng, "birth_date": bd_str, "category": category
-                }).execute()
-    except Exception as e: st.error(f"存檔失敗: {e}")
+                response = supabase.table("saved_charts").insert(data_payload).execute()
+                if response.data:
+                    st.toast("🎉 親友新增成功！")
+                else:
+                    st.warning("⚠️ 新增指令已送出，但沒有回傳確認，請刷新檢查。")
+
+    except Exception as e:
+        st.error(f"💀 存檔失敗，錯誤原因：{str(e)}")
+        print(f"DEBUG ERROR: {e}")
 
 def _delete_chart(chart_id):
     if not supabase: return
@@ -70,12 +129,10 @@ def _delete_chart(chart_id):
 
 # --- 詳細資料區塊 (包含編輯功能) ---
 def _render_chart_details_section(target, username, all_existing_categories):
-    # 狀態管理：編輯模式
     edit_key = f"edit_mode_{target['id']}"
     if edit_key not in st.session_state: st.session_state[edit_key] = False
     is_editing = st.session_state[edit_key]
 
-    # 標題區
     c_title, c_btn = st.columns([4, 1])
     with c_title: st.markdown(f"#### 🧬 {target['name']} 的能量導航")
     with c_btn:
@@ -88,23 +145,31 @@ def _render_chart_details_section(target, username, all_existing_categories):
                 st.session_state[edit_key] = True
                 st.rerun()
 
-    # 編輯模式：顯示表單
     if is_editing:
         with st.container(border=True):
-            # 使用 Form 避免打字時一直重整
             with st.form(key=f"edit_form_{target['id']}"):
                 e_name = st.text_input("姓名", value=target['name'])
-                e_eng = st.text_input("英文名", value=target['english_name'])
-                e_bd = st.date_input("出生日期", value=target['birthdate'])
                 
-                # --- 分類選擇改良版 (雙軌制) ---
+                # 提示用戶可以留空
+                e_eng = st.text_input(
+                    "英文名 (可留空，系統將自動翻譯)", 
+                    value=target['english_name'],
+                    placeholder="例如: Yu Chiao Chun"
+                )
+                
+                e_bd = st.date_input(
+                    "出生日期", 
+                    value=target['birthdate'], 
+                    min_value=datetime.date(1900, 1, 1),
+                    max_value=datetime.date.today()
+                )
+                
                 st.caption("設定關係分類")
                 c_cat_sel, c_cat_new = st.columns([1, 1])
                 
                 current_cat = target.get('category', '未分類')
                 base_options = sorted(list(set(["家人", "朋友", "同事", "客戶", "未分類"] + all_existing_categories)))
                 
-                # 確保目前分類在選項中
                 if current_cat not in base_options: base_options.insert(0, current_cat)
                 try: cat_index = base_options.index(current_cat)
                 except: cat_index = 0
@@ -114,36 +179,28 @@ def _render_chart_details_section(target, username, all_existing_categories):
                 with c_cat_new:
                     new_cat_input = st.text_input("或建立新分類", placeholder="輸入名稱 (如: 球友)")
 
-                # 提交按鈕
                 if st.form_submit_button("✅ 儲存變更", type="primary", use_container_width=True):
-                    # 邏輯：如果有輸入新分類，就用新的；否則用選單選的
                     final_cat = new_cat_input.strip() if new_cat_input.strip() else sel_cat
-                    
                     _save_chart(username, e_name, e_eng, e_bd, final_cat, uid=(None if target['type']=='me' else target['id']), is_me=(target['type']=='me'))
                     st.session_state[edit_key] = False
-                    st.toast("資料已更新！")
                     time.sleep(1)
                     st.rerun()
 
-            # 刪除按鈕 (放在 Form 外面以免誤觸提交)
             if target['type'] == 'friend':
                 if st.button("🗑️ 刪除此人", type="secondary", use_container_width=True, key=f"del_{target['id']}"):
                     _delete_chart(target['id'])
                     st.session_state.selected_profile_id = "ME"
                     st.rerun()
         
-        # 編輯時用新資料預覽 (簡單預覽)
-        life_map_ui.render_energy_tabs(target['birthdate'], target['english_name']) # 暫時用舊資料預覽以免報錯，存檔後自然會更新
+        life_map_ui.render_energy_tabs(target['birthdate'], target['english_name'])
         
     else:
-        # 顯示模式：直接呼叫 UI 模組渲染圖表
         life_map_ui.render_energy_tabs(target['birthdate'], target['english_name'])
 
 # --- 主渲染入口 ---
 def render():
     username = st.session_state.username
     
-    # 準備資料
     all_profiles = []
     me = _get_my_profile(username)
     if me: all_profiles.append(me)
@@ -152,10 +209,8 @@ def render():
     friends = _get_saved_charts(username)
     all_profiles.extend(friends)
 
-    # 提取現有分類
     existing_cats = list(set([p.get('category', '未分類') for p in friends]))
 
-    # --- 1. 上半部：詳細資料 ---
     if "selected_profile_id" not in st.session_state: st.session_state.selected_profile_id = "ME"
     target = next((x for x in all_profiles if x['id'] == st.session_state.selected_profile_id), None)
     
@@ -168,18 +223,21 @@ def render():
     
     st.divider()
 
-    # --- 2. 下半部：家族矩陣列表 ---
-    st.markdown("### 👨‍👩‍👧‍👦 親友檔案庫")
+    st.markdown("### 👨‍👩‍👧‍👦 家族矩陣：親友檔案庫")
 
-    # 新增按鈕區 (含分類改良)
     with st.expander("➕ 新增親友資料", expanded=False):
         with st.form("add_friend_form"):
             c1, c2 = st.columns(2)
             new_name = c1.text_input("姓名")
-            new_eng = c2.text_input("英文名")
-            new_bd = st.date_input("出生日期", min_value=datetime.date(1900,1,1))
+            # 提示用戶可以留空
+            new_eng = c2.text_input("英文名 (留空則自動生成)", placeholder="系統將自動轉換為威妥碼拼音")
             
-            # 分類雙軌制
+            new_bd = st.date_input(
+                "出生日期", 
+                min_value=datetime.date(1900,1,1),
+                max_value=datetime.date.today()
+            )
+            
             st.caption("設定關係分類")
             c_cat_1, c_cat_2 = st.columns([1, 1])
             with c_cat_1:
@@ -189,15 +247,12 @@ def render():
                 manual_new_cat = st.text_input("或建立新分類", placeholder="例如: 大學同學")
             
             if st.form_submit_button("建立檔案", type="primary"):
-                # 優先使用手動輸入的分類
                 final_new_cat = manual_new_cat.strip() if manual_new_cat.strip() else sel_new_cat
-                
                 _save_chart(username, new_name, new_eng, new_bd, final_new_cat, is_me=False)
                 st.toast(f"已新增 {new_name} 到 {final_new_cat}！")
                 time.sleep(1)
                 st.rerun()
 
-    # 分類分頁渲染
     categories_map = {"全部": all_profiles}
     for p in all_profiles:
         cat = p.get('category', '未分類') or '未分類'
