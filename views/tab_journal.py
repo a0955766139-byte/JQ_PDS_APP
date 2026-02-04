@@ -35,21 +35,27 @@ def fetch_journals(username):
         return []
 
 def save_journal(username, content, mood, emoji, entry_id=None):
-    """新增或更新日記 (包含心情與表情)"""
+    """新增或更新日記 (包含心情與表情) - 強制使用台灣時間"""
     if not supabase: return
-    now = datetime.datetime.now().isoformat()
+    
+    # 設定台灣時區 (UTC+8)
+    tz_tw = datetime.timezone(datetime.timedelta(hours=8))
+    now = datetime.datetime.now(tz_tw).isoformat()
+    
     try:
         data = {
             "user_id": username,
             "content": content,
             "mood": mood,
-            "emoji": emoji, # 新增：儲存表情符號
+            "emoji": emoji,
             "updated_at": now
         }
         if entry_id: # 更新模式
             supabase.table("journal_entries").update(data).eq("id", entry_id).execute()
             st.toast("✅ 日記已更新！")
         else: # 新增模式
+            # 新增時我們通常依賴 DB 的 default now()，但為了精確控制，我們也可以傳入 created_at
+            # 這裡我們主要控制 updated_at，顯示時會以此為主或轉換 created_at
             supabase.table("journal_entries").insert(data).execute()
             st.toast("🎉 新日記已儲存！")
     except Exception as e:
@@ -80,6 +86,9 @@ def render():
         "😊", "🥰", "😍", "😘", "😙", "😎", "😕", "🙁", "🙃", "🤩", 
         "🥳", "😩", "😥", "🥶", "🥵", "😶‍🌫️", "🤕", "🤑"
     ]
+    
+    # 定義時區物件 (用於顯示)
+    tz_tw = datetime.timezone(datetime.timedelta(hours=8))
 
     # 初始化 Session State
     if "journal_edit_id" not in st.session_state:
@@ -107,26 +116,20 @@ def render():
     with st.form("journal_form"):
         col1, col2 = st.columns([1, 1])
         
-        # 1. 心情色調 (紅/藍框)
+        # 1. 心情色調
         with col1:
             mood_opts = ["好心情 (🔴)", "壞心情 (🔵)"]
             default_mood_idx = 0 if st.session_state.journal_mood == "good" else 1
             sel_mood = st.radio("今日基調", mood_opts, index=default_mood_idx, horizontal=True)
             mood_val = "good" if "好心情" in sel_mood else "bad"
 
-        # 2. 表情包選擇 (Dropdown)
+        # 2. 表情包選擇
         with col2:
-            # 找出目前選定表情的 index，防呆機制
             try:
                 curr_emoji_idx = emoji_options.index(st.session_state.journal_emoji)
             except:
                 curr_emoji_idx = 0
-                
-            selected_emoji = st.selectbox(
-                "選擇今日表情", 
-                emoji_options, 
-                index=curr_emoji_idx
-            )
+            selected_emoji = st.selectbox("選擇今日表情", emoji_options, index=curr_emoji_idx)
 
         # 3. 文字輸入區
         content = st.text_area(
@@ -158,7 +161,6 @@ def render():
             st.warning("刪除後無法復原，確定嗎？")
             if st.button("確認刪除", type="primary"):
                 delete_journal(st.session_state.journal_edit_id)
-                # 重置所有狀態
                 st.session_state.journal_edit_id = None
                 st.session_state.journal_content = ""
                 st.session_state.journal_mood = "good"
@@ -176,30 +178,34 @@ def render():
         st.caption("目前沒有日記，開始寫第一篇吧！")
     else:
         for j in journals:
+            # --- 時間處理核心邏輯 ---
+            # 1. 解析 ISO 格式字串 (資料庫預設存 UTC)
+            # 2. .replace('Z', '+00:00') 確保 python 能讀懂 UTC
             dt = datetime.datetime.fromisoformat(j['created_at'].replace('Z', '+00:00'))
-            date_str = dt.strftime("%Y/%m/%d %H:%M")
-            preview = j['content'][:50].replace("\n", " ") + ("..." if len(j['content']) > 50 else "")
             
-            # 取出資料，若無則給預設值
+            # 3. 轉成台灣時間 (UTC+8)
+            dt_tw = dt.astimezone(tz_tw)
+            
+            # 4. 格式化顯示字串
+            date_str = dt_tw.strftime("%Y/%m/%d %H:%M")
+            # -----------------------
+
+            preview = j['content'][:50].replace("\n", " ") + ("..." if len(j['content']) > 50 else "")
             saved_mood = j.get('mood', 'neutral')
             saved_emoji = j.get('emoji') 
-            if not saved_emoji: saved_emoji = "📝" # 舊資料給個預設圖示
+            if not saved_emoji: saved_emoji = "📝"
 
-            # 定義顏色框
             if saved_mood == 'good':
-                container_type = st.error # 紅色樣式
+                container_type = st.error 
             elif saved_mood == 'bad':
-                container_type = st.info  # 藍色樣式
+                container_type = st.info 
             else:
-                container_type = st.container # 預設
+                container_type = st.container
 
-            # 渲染卡片邏輯
-            # 有心情顏色的用特殊框，沒有的用普通框
             if saved_mood in ['good', 'bad']:
                 with container_type():
                     c1, c2 = st.columns([5, 1])
                     with c1:
-                        # 標題：表情符號 + 日期
                         st.markdown(f"### {saved_emoji}  <span style='font-size:0.8em; color:#666'>{date_str}</span>", unsafe_allow_html=True)
                         st.caption(preview)
                     with c2:
@@ -210,7 +216,6 @@ def render():
                             st.session_state.journal_emoji = saved_emoji
                             st.rerun()
             else:
-                # 舊資料樣式
                 with st.container(border=True):
                     c1, c2 = st.columns([5, 1])
                     with c1:
