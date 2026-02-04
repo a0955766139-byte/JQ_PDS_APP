@@ -114,15 +114,81 @@ def render_energy_tabs(display_bd, display_name):
                 with g_cols[i]: st.markdown(f"`{code}`")
 
     with t4:
-        st.markdown("##### 🏔️ 人生四大高峰與挑戰")
+        st.markdown("##### 🏔️ 人生四大高峰與挑戰 (Diamond Chart)")
         try:
             engine = pds_core.NineEnergyNumerology()
             diamond_data = engine.calculate_diamond_chart(display_bd.year, display_bd.month, display_bd.day)
-            for stage in diamond_data.get('timeline', []):
-                with st.container(border=True):
-                    st.markdown(f"**{stage['stage']}** <small>({stage['age_range']})</small>", unsafe_allow_html=True)
-                    col1, col2 = st.columns(2)
-                    col1.metric("⭕ 高峰 (機會)", stage.get('p_val', '-'))
-                    col2.metric("⚠️ 挑戰 (功課)", stage.get('c_val', '-'))
+            
+            # --- 定義 CSS 樣式 (讓程式碼更整潔) ---
+            # 高峰樣式 (暖色系漸層 + 紅色左邊條)
+            style_p = """
+                background: linear-gradient(145deg, #fff8f8, #ffebeb);
+                border-left: 6px solid #ff5252;
+                border-radius: 12px;
+                padding: 15px 20px;
+                box-shadow: 0 4px 6px rgba(255, 82, 82, 0.1);
+                height: 100%;
+            """
+            # 挑戰樣式 (冷色系漸層 + 藍紫色左邊條)
+            style_c = """
+                background: linear-gradient(145deg, #f8f9ff, #ebeeff);
+                border-left: 6px solid #5c43b8;
+                border-radius: 12px;
+                padding: 15px 20px;
+                box-shadow: 0 4px 6px rgba(92, 67, 184, 0.1);
+                height: 100%;
+            """
+            # 數字大字體樣式
+            style_num = "font-size: 48px; font-weight: 800; line-height: 1.2; margin: 10px 0;"
+            # -------------------------------------
+
+            for i, stage in enumerate(diamond_data.get('timeline', [])):
+                # 階段標題
+                st.markdown(f"""
+                <div style="margin-top: 30px; margin-bottom: 15px; display: flex; align-items: baseline;">
+                    <span style="font-size: 20px; font-weight: bold; margin-right: 10px;">📍 {stage['stage']}</span>
+                    <span style="color: #666; font-weight: 500;">({stage['age_range']})</span>
+                </div>
+                """, unsafe_allow_html=True)
+                
+                # 使用 columns 將高峰與挑戰左右並排
+                c1, c2 = st.columns(2, gap="medium")
+                
+                # --- 左側：高峰卡片 ---
+                with c1:
+                    st.markdown(f"""
+                        <div style="{style_p}">
+                            <div style="color: #d32f2f; font-weight: 700; display: flex; align-items: center;">
+                                <span style="margin-right: 8px;">⭕</span> 高峰數 (機會)
+                            </div>
+                            <div style="{style_num} color: #c62828;">
+                                {stage.get('p_val', '-')}
+                            </div>
+                            <div style="font-size: 13px; color: #9e5454;">
+                                ✨ 能量紅利 / 開闢新局
+                            </div>
+                        </div>
+                    """, unsafe_allow_html=True)
+
+                # --- 右側：挑戰卡片 ---
+                with c2:
+                    st.markdown(f"""
+                        <div style="{style_c}">
+                            <div style="color: #4527a0; font-weight: 700; display: flex; align-items: center;">
+                                <span style="margin-right: 8px;">⚠️</span> 挑戰數 (功課)
+                            </div>
+                            <div style="{style_num} color: #311b92;">
+                                {stage.get('c_val', '-')}
+                            </div>
+                            <div style="font-size: 13px; color: #6f5e99;">
+                                🔥 靈魂試煉 / 成長關卡
+                            </div>
+                        </div>
+                    """, unsafe_allow_html=True)
+                
+                # 階段之間的分隔線 (最後一個階段後不顯示)
+                if i < len(diamond_data.get('timeline', [])) - 1:
+                     st.markdown('<hr style="border-top: 1px dashed #ddd; margin: 30px 0;">', unsafe_allow_html=True)
+
         except Exception as e:
             st.error(f"運算模組載入失敗: {e}")
