@@ -152,51 +152,12 @@ def render():
     friends = _get_saved_charts(username)
     all_profiles.extend(friends)
 
-    # 新增按鈕區
-    with st.expander("➕ 新增親友資料", expanded=False):
-        with st.form("add_friend_form"):
-            c1, c2 = st.columns(2)
-            new_name = c1.text_input("姓名")
-            new_eng = c2.text_input("英文名")
-            new_bd = st.date_input("出生日期", min_value=datetime.date(1900,1,1))
-            if st.form_submit_button("建立檔案", type="primary"):
-                _save_chart(username, new_name, new_eng, new_bd, is_me=False)
-                st.rerun()
-
-    st.divider()
-
-    # --- 2. 列表展示 (Card View) ---
-    # 使用 session_state 紀錄目前選中的 profile_id
     if "selected_profile_id" not in st.session_state:
         st.session_state.selected_profile_id = "ME"
 
-    # 渲染頭像列表
-    cols = st.columns(4)
-    for idx, p in enumerate(all_profiles):
-        # 計算主命數作為 Icon
-        lpn = sum(int(d) for d in p['birthdate'].strftime("%Y%m%d"))
-        while lpn > 9: lpn = sum(int(d) for d in str(lpn))
-        
-        is_selected = (st.session_state.selected_profile_id == p['id'])
-        
-        # 卡片樣式
-        card_bg = "#f0f2f6" if not is_selected else "#e3d5f2"
-        border_color = "transparent" if not is_selected else "#6a3093"
-        
-        with cols[idx % 4]:
-            if st.button(
-                f"{p['name']}\n{lpn}號人", 
-                key=f"btn_{p['id']}", 
-                use_container_width=True,
-                help=f"點擊查看 {p['name']} 的詳細盤"
-            ):
-                st.session_state.selected_profile_id = p['id']
-                st.rerun()
-
-    # --- 3. 詳細資料展示區 ---
-    st.write("")
     target = next((x for x in all_profiles if x['id'] == st.session_state.selected_profile_id), None)
-    
+
+    st.write("")
     if target:
         # 狀態管理：編輯模式
         edit_key = f"edit_mode_{target['id']}"
@@ -347,3 +308,43 @@ def render():
                             <div style="font-size:12px; color:#4b0082;">功課 / 能量試煉</div>
                         </div>
                         """, unsafe_allow_html=True)
+    else:
+        st.info("請先建立或選擇一筆檔案，以顯示能量導航資訊。")
+
+    st.divider()
+
+    st.markdown("### 🗂️ 家族矩陣列表")
+    st.caption("點擊任一卡片即可重新載入上方詳情區塊")
+
+    # 渲染頭像列表
+    cols = st.columns(4)
+    for idx, p in enumerate(all_profiles):
+        # 計算主命數作為 Icon
+        lpn = sum(int(d) for d in p['birthdate'].strftime("%Y%m%d"))
+        while lpn > 9: lpn = sum(int(d) for d in str(lpn))
+        
+        is_selected = (st.session_state.selected_profile_id == p['id'])
+        
+        # 卡片樣式
+        card_bg = "#f0f2f6" if not is_selected else "#e3d5f2"
+        border_color = "transparent" if not is_selected else "#6a3093"
+        
+        with cols[idx % 4]:
+            if st.button(
+                f"{p['name']}\n{lpn}號人", 
+                key=f"btn_{p['id']}", 
+                use_container_width=True,
+                help=f"點擊查看 {p['name']} 的詳細盤"
+            ):
+                st.session_state.selected_profile_id = p['id']
+                st.rerun()
+
+    with st.expander("➕ 新增親友資料", expanded=False):
+        with st.form("add_friend_form"):
+            c1, c2 = st.columns(2)
+            new_name = c1.text_input("姓名")
+            new_eng = c2.text_input("英文名")
+            new_bd = st.date_input("出生日期", min_value=datetime.date(1900,1,1))
+            if st.form_submit_button("建立檔案", type="primary"):
+                _save_chart(username, new_name, new_eng, new_bd, is_me=False)
+                st.rerun()
