@@ -34,15 +34,16 @@ def fetch_journals(username):
         st.error(f"讀取失敗: {e}")
         return []
 
-def save_journal(username, content, mood, entry_id=None):
-    """新增或更新日記 (包含心情)"""
+def save_journal(username, content, mood, emoji, entry_id=None):
+    """新增或更新日記 (包含心情與表情)"""
     if not supabase: return
     now = datetime.datetime.now().isoformat()
     try:
         data = {
             "user_id": username,
             "content": content,
-            "mood": mood,  # 新增：儲存心情顏色
+            "mood": mood,
+            "emoji": emoji, # 新增：儲存表情符號
             "updated_at": now
         }
         if entry_id: # 更新模式
@@ -73,13 +74,22 @@ def render():
     username = st.session_state.username
     st.markdown("### 📔 靈魂書寫：與內在對話")
 
+    # 定義表情包清單
+    emoji_options = [
+        "😀", "😃", "😄", "😆", "🥹", "😅", "😂", "🤣", "🥲", "☺️", 
+        "😊", "🥰", "😍", "😘", "😙", "😎", "😕", "🙁", "🙃", "🤩", 
+        "🥳", "😩", "😥", "🥶", "🥵", "😶‍🌫️", "🤕", "🤑"
+    ]
+
     # 初始化 Session State
     if "journal_edit_id" not in st.session_state:
         st.session_state.journal_edit_id = None
     if "journal_content" not in st.session_state:
         st.session_state.journal_content = ""
     if "journal_mood" not in st.session_state:
-        st.session_state.journal_mood = "good" # 預設好心情
+        st.session_state.journal_mood = "good"
+    if "journal_emoji" not in st.session_state:
+        st.session_state.journal_emoji = emoji_options[0]
 
     # === 上半部：編輯器區塊 ===
     mode_title = "📝 撰寫新篇章" if not st.session_state.journal_edit_id else "✏️ 編輯日記"
@@ -91,27 +101,34 @@ def render():
             st.session_state.journal_edit_id = None
             st.session_state.journal_content = ""
             st.session_state.journal_mood = "good"
+            st.session_state.journal_emoji = emoji_options[0]
             st.rerun()
 
     with st.form("journal_form"):
-        # 1. 心情選擇器 (Radio Button)
-        # 對應值: "good" -> 紅色框, "bad" -> 藍色框
-        c_mood, c_spacer = st.columns([1, 1])
-        with c_mood:
-            # 根據 Session State 設定預設選項索引
-            mood_options = ["好心情 (🔴 紅色)", "壞心情 (🔵 藍色)"]
-            default_index = 0 if st.session_state.journal_mood == "good" else 1
-            
-            selected_mood_label = st.radio(
-                "今日心情色調", 
-                mood_options, 
-                index=default_index,
-                horizontal=True
-            )
-            # 將標籤轉回代碼
-            mood_val = "good" if "好心情" in selected_mood_label else "bad"
+        col1, col2 = st.columns([1, 1])
+        
+        # 1. 心情色調 (紅/藍框)
+        with col1:
+            mood_opts = ["好心情 (🔴)", "壞心情 (🔵)"]
+            default_mood_idx = 0 if st.session_state.journal_mood == "good" else 1
+            sel_mood = st.radio("今日基調", mood_opts, index=default_mood_idx, horizontal=True)
+            mood_val = "good" if "好心情" in sel_mood else "bad"
 
-        # 2. 文字輸入區
+        # 2. 表情包選擇 (Dropdown)
+        with col2:
+            # 找出目前選定表情的 index，防呆機制
+            try:
+                curr_emoji_idx = emoji_options.index(st.session_state.journal_emoji)
+            except:
+                curr_emoji_idx = 0
+                
+            selected_emoji = st.selectbox(
+                "選擇今日表情", 
+                emoji_options, 
+                index=curr_emoji_idx
+            )
+
+        # 3. 文字輸入區
         content = st.text_area(
             "寫下你的心情...", 
             value=st.session_state.journal_content, 
@@ -119,7 +136,7 @@ def render():
             placeholder="今天發生了什麼？你的內在有什麼聲音？"
         )
         
-        # 3. 按鈕區
+        # 4. 按鈕區
         c_save, c_del = st.columns([4, 1])
         with c_save:
             submitted = st.form_submit_button("💾 儲存紀錄", type="primary", use_container_width=True)
@@ -128,9 +145,10 @@ def render():
         if not content.strip():
             st.warning("內容不能為空喔！")
         else:
-            save_journal(username, content, mood_val, st.session_state.journal_edit_id)
+            save_journal(username, content, mood_val, selected_emoji, st.session_state.journal_edit_id)
             st.session_state.journal_content = content 
             st.session_state.journal_mood = mood_val
+            st.session_state.journal_emoji = selected_emoji
             time.sleep(1)
             st.rerun()
 
@@ -140,9 +158,11 @@ def render():
             st.warning("刪除後無法復原，確定嗎？")
             if st.button("確認刪除", type="primary"):
                 delete_journal(st.session_state.journal_edit_id)
+                # 重置所有狀態
                 st.session_state.journal_edit_id = None
                 st.session_state.journal_content = ""
                 st.session_state.journal_mood = "good"
+                st.session_state.journal_emoji = emoji_options[0]
                 st.rerun()
 
     st.divider()
@@ -160,45 +180,46 @@ def render():
             date_str = dt.strftime("%Y/%m/%d %H:%M")
             preview = j['content'][:50].replace("\n", " ") + ("..." if len(j['content']) > 50 else "")
             
-            # 判斷心情顏色
-            # 使用 Streamlit 內建的 colored box: error=紅, info=藍
+            # 取出資料，若無則給預設值
             saved_mood = j.get('mood', 'neutral')
-            
-            # 定義容器類型 (利用 error/info 來達成紅/藍框效果)
-            if saved_mood == 'good':
-                container_type = st.error # 紅色 (雖然叫 error，但在這裡是代表好心情的紅)
-                icon = "🔴"
-            elif saved_mood == 'bad':
-                container_type = st.info  # 藍色
-                icon = "🔵"
-            else:
-                container_type = st.container # 預設灰色
-                icon = "⚪"
+            saved_emoji = j.get('emoji') 
+            if not saved_emoji: saved_emoji = "📝" # 舊資料給個預設圖示
 
-            # 渲染卡片
-            # 如果是預設灰色，需要加 border=True；如果是紅/藍，內建就有底色
+            # 定義顏色框
+            if saved_mood == 'good':
+                container_type = st.error # 紅色樣式
+            elif saved_mood == 'bad':
+                container_type = st.info  # 藍色樣式
+            else:
+                container_type = st.container # 預設
+
+            # 渲染卡片邏輯
+            # 有心情顏色的用特殊框，沒有的用普通框
             if saved_mood in ['good', 'bad']:
                 with container_type():
-                    c1, c2 = st.columns([4, 1])
+                    c1, c2 = st.columns([5, 1])
                     with c1:
-                        st.markdown(f"**{icon} {date_str}**")
+                        # 標題：表情符號 + 日期
+                        st.markdown(f"### {saved_emoji}  <span style='font-size:0.8em; color:#666'>{date_str}</span>", unsafe_allow_html=True)
                         st.caption(preview)
                     with c2:
-                        if st.button("✏️", key=f"load_{j['id']}", help="編輯此篇日記"):
+                        if st.button("✏️", key=f"load_{j['id']}", help="編輯"):
                             st.session_state.journal_edit_id = j['id']
                             st.session_state.journal_content = j['content']
                             st.session_state.journal_mood = saved_mood
+                            st.session_state.journal_emoji = saved_emoji
                             st.rerun()
             else:
-                # 舊資料或無心情的顯示方式
+                # 舊資料樣式
                 with st.container(border=True):
-                    c1, c2 = st.columns([4, 1])
+                    c1, c2 = st.columns([5, 1])
                     with c1:
-                        st.markdown(f"**{date_str}**")
+                        st.markdown(f"**{saved_emoji} {date_str}**")
                         st.caption(preview)
                     with c2:
                         if st.button("✏️", key=f"load_{j['id']}"):
                             st.session_state.journal_edit_id = j['id']
                             st.session_state.journal_content = j['content']
                             st.session_state.journal_mood = "good"
+                            st.session_state.journal_emoji = "😀"
                             st.rerun()
