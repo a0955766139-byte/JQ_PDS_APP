@@ -129,12 +129,23 @@ def _delete_chart(chart_id):
 
 # --- 詳細資料區塊 (包含編輯功能) ---
 def _render_chart_details_section(target, username, all_existing_categories):
+    # 狀態管理：編輯模式
     edit_key = f"edit_mode_{target['id']}"
     if edit_key not in st.session_state: st.session_state[edit_key] = False
     is_editing = st.session_state[edit_key]
 
+    # --- [關鍵修改] 標題區：加入英文名字顯示 ---
     c_title, c_btn = st.columns([4, 1])
-    with c_title: st.markdown(f"#### 🧬 {target['name']} 的能量導航")
+    with c_title: 
+        # 準備英文名字字串 (灰色小字)
+        eng_display = ""
+        if target.get('english_name'):
+            eng_display = f" <span style='font-size:0.7em; color:#666; font-weight:normal'>({target['english_name']})</span>"
+            
+        # 渲染標題 (需開啟 unsafe_allow_html 才能吃 HTML 語法)
+        st.markdown(f"#### 🧬 {target['name']}{eng_display} 的能量導航", unsafe_allow_html=True)
+    # -----------------------------------------
+
     with c_btn:
         if is_editing:
             if st.button("取消", key=f"cancel_{target['id']}"):
@@ -145,6 +156,7 @@ def _render_chart_details_section(target, username, all_existing_categories):
                 st.session_state[edit_key] = True
                 st.rerun()
 
+    # 編輯模式：顯示表單
     if is_editing:
         with st.container(border=True):
             with st.form(key=f"edit_form_{target['id']}"):
