@@ -31,7 +31,8 @@ def fetch_journals(username):
             .execute()
         return res.data
     except Exception as e:
-        st.error(f"讀取失敗: {e}")
+        # 這裡改成 warning 以免干擾版面，但通常不會出錯
+        st.warning(f"讀取失敗: {e}")
         return []
 
 def save_journal(username, content, mood, emoji, entry_id=None):
@@ -54,8 +55,6 @@ def save_journal(username, content, mood, emoji, entry_id=None):
             supabase.table("journal_entries").update(data).eq("id", entry_id).execute()
             st.toast("✅ 日記已更新！")
         else: # 新增模式
-            # 新增時我們通常依賴 DB 的 default now()，但為了精確控制，我們也可以傳入 created_at
-            # 這裡我們主要控制 updated_at，顯示時會以此為主或轉換 created_at
             supabase.table("journal_entries").insert(data).execute()
             st.toast("🎉 新日記已儲存！")
     except Exception as e:
@@ -172,59 +171,49 @@ def render():
     # === 下半部：歷史紀錄區塊 ===
     st.markdown("##### 🗂️ 歷史紀錄")
     
-    journals = fetch_journals(username)
+    try:
+        journals = fetch_journals(username)
+    except Exception as e:
+        st.error(f"讀取錯誤: {e}")
+        journals = []
     
     if not journals:
         st.caption("目前沒有日記，開始寫第一篇吧！")
     else:
         for j in journals:
-            # --- 時間處理核心邏輯 ---
-            # 1. 解析 ISO 格式字串 (資料庫預設存 UTC)
-            # 2. .replace('Z', '+00:00') 確保 python 能讀懂 UTC
+            # 時間處理
             dt = datetime.datetime.fromisoformat(j['created_at'].replace('Z', '+00:00'))
-            
-            # 3. 轉成台灣時間 (UTC+8)
             dt_tw = dt.astimezone(tz_tw)
-            
-            # 4. 格式化顯示字串
             date_str = dt_tw.strftime("%Y/%m/%d %H:%M")
-            # -----------------------
 
             preview = j['content'][:50].replace("\n", " ") + ("..." if len(j['content']) > 50 else "")
             saved_mood = j.get('mood', 'neutral')
             saved_emoji = j.get('emoji') 
             if not saved_emoji: saved_emoji = "📝"
 
+            # 決定容器類型與初始化
+            # 關鍵修正：對於 st.error 和 st.info，我們必須傳入一個參數 " " (空白字串)
+            # 這樣才不會報 'missing argument' 錯誤，同時能顯示背景色
+            
+            box_context = None # 用來存放 context manager
+            
             if saved_mood == 'good':
-                container_type = st.error 
+                box_context = st.error(" ") # 紅色背景，標題放空
             elif saved_mood == 'bad':
-                container_type = st.info 
+                box_context = st.info(" ")  # 藍色背景，標題放空
             else:
-                container_type = st.container
-
-            if saved_mood in ['good', 'bad']:
-                with container_type():
-                    c1, c2 = st.columns([5, 1])
-                    with c1:
-                        st.markdown(f"### {saved_emoji}  <span style='font-size:0.8em; color:#666'>{date_str}</span>", unsafe_allow_html=True)
-                        st.caption(preview)
-                    with c2:
-                        if st.button("✏️", key=f"load_{j['id']}", help="編輯"):
-                            st.session_state.journal_edit_id = j['id']
-                            st.session_state.journal_content = j['content']
-                            st.session_state.journal_mood = saved_mood
-                            st.session_state.journal_emoji = saved_emoji
-                            st.rerun()
-            else:
-                with st.container(border=True):
-                    c1, c2 = st.columns([5, 1])
-                    with c1:
-                        st.markdown(f"**{saved_emoji} {date_str}**")
-                        st.caption(preview)
-                    with c2:
-                        if st.button("✏️", key=f"load_{j['id']}"):
-                            st.session_state.journal_edit_id = j['id']
-                            st.session_state.journal_content = j['content']
-                            st.session_state.journal_mood = "good"
-                            st.session_state.journal_emoji = "😀"
-                            st.rerun()
+                box_context = st.container(border=True) # 預設灰色框
+            
+            # 使用我們設定好的 Context Manager
+            with box_context:
+                c1, c2 = st.columns([5, 1])
+                with c1:
+                    st.markdown(f"### {saved_emoji}  <span style='font-size:0.8em; color:#666'>{date_str}</span>", unsafe_allow_html=True)
+                    st.caption(preview)
+                with c2:
+                    if st.button("✏️", key=f"load_{j['id']}", help="編輯"):
+                        st.session_state.journal_edit_id = j['id']
+                        st.session_state.journal_content = j['content']
+                        st.session_state.journal_mood = saved_mood
+                        st.session_state.journal_emoji = saved_emoji
+                        st.rerun()
