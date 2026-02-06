@@ -262,7 +262,7 @@ if __name__ == "__main__":
 
             if line_name:
                 st.session_state.logged_in = True
-                st.session_state.user = {"email": "line_user"} # 模擬一個 user 物件
+                st.session_state.user = {"email": "line_user"}  # 模擬一個 user 物件
                 st.session_state.username = line_name
                 st.query_params.clear()
                 st.rerun()
@@ -273,26 +273,39 @@ if __name__ == "__main__":
         show_member_app()
         st.stop()
 
-    if not auth_ui:
-        st.error("找不到 views/auth_ui.py，請確認檔案是否存在。")
-        st.stop()
+    st.markdown("""
+    <style>
+    .stApp { background-color: #ffffff; }
+    .welcome-title { font-size: 42px; font-weight: 900; color: #2c3e50; margin-top: 20px; margin-bottom: 10px; line-height: 1.2; }
+    .welcome-sub { font-size: 18px; color: #666; margin-bottom: 30px; }
+    .auth-card { background: white; padding: 40px; border-radius: 20px; box-shadow: 0 10px 40px rgba(0,0,0,0.08); border: 1px solid #eee; margin-top: 50px; text-align: center; }
+    .line-btn { display: inline-flex; align-items: center; justify-content: center; background-color: #06C755; color: white !important; text-decoration: none; font-weight: bold; padding: 18px 30px; border-radius: 12px; transition: transform 0.2s ease; box-shadow: 0 6px 12px rgba(6, 199, 85, 0.2); font-size: 18px; }
+    .line-btn:hover { transform: translateY(-2px); box-shadow: 0 8px 16px rgba(6, 199, 85, 0.3); }
+    .line-btn img { width: 24px; height: 24px; margin-right: 12px; filter: brightness(0) invert(1); }
+    #MainMenu {visibility: hidden;} footer {visibility: hidden;}
+    </style>
+    """, unsafe_allow_html=True)
 
-    auth_ui.render_auth()
+    c_left, c_space, c_right = st.columns([6, 1, 4])
+    with c_left:
+        st.markdown('<div class="welcome-title">歡迎來到<br>九能量導航</div>', unsafe_allow_html=True)
+        st.markdown('<div class="welcome-sub">探索天賦 · 覺察能量 · 擁抱靈魂旅程</div>', unsafe_allow_html=True)
+        st.image("https://images.unsplash.com/photo-1519681393784-d120267933ba?q=80&w=2070&auto=format&fit=crop", use_container_width=True)
 
-    st.divider()
-    auth_url = get_line_auth_url()
-    if auth_url:
-        st.markdown(f'''
-        <div style="text-align: center;">
-            <p style="color:#666; font-size:0.9em;">或是使用社群帳號快速登入</p>
-            <a href="{auth_url}" target="_self" style="
-                display: inline-flex; align-items: center; justify-content: center;
-                background-color: #06C755; color: white; text-decoration: none;
-                font-weight: bold; padding: 10px 20px; border-radius: 8px;
-                box-shadow: 0 2px 5px rgba(0,0,0,0.1);">
-                <img src="https://upload.wikimedia.org/wikipedia/commons/4/41/LINE_logo.svg" 
-                style="width: 20px; height: 20px; margin-right: 8px; filter: brightness(0) invert(1);">
-                LINE 登入
-            </a>
-        </div>
-        ''', unsafe_allow_html=True)
+    with c_right:
+        st.write(""); st.write(""); st.write("")
+        with st.container():
+            st.markdown('<div class="auth-card">', unsafe_allow_html=True)
+            auth_url = get_line_auth_url()
+            if auth_url:
+                st.markdown(f'''<a href="{auth_url}" target="_self" class="line-btn"><img src="https://upload.wikimedia.org/wikipedia/commons/4/41/LINE_logo.svg">LINE 登入</a>''', unsafe_allow_html=True)
+            else:
+                st.error("⚠️ 系統錯誤：未檢測到 LINE Channel ID，無法提供登入。")
+            st.markdown("</div>", unsafe_allow_html=True)
+
+            st.divider()
+            if not auth_ui:
+                st.error("找不到 views/auth_ui.py，請確認檔案是否存在。")
+            else:
+                with st.expander("📧 使用 Email 登入/註冊"):
+                    auth_ui.render_auth()

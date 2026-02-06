@@ -21,6 +21,18 @@ def init_connection():
 
 supabase = init_connection()
 
+def _needs_email_binding(username):
+    if not supabase or not username:
+        return False
+    try:
+        res = supabase.table("users").select("email").eq("username", username).execute()
+        if res.data:
+            email = res.data[0].get("email")
+            return not email
+    except: 
+        pass
+    return False
+
 def update_profile(username, full_name, eng_name, birth_date):
     if not supabase: return False
     try:
@@ -45,6 +57,8 @@ def get_all_users():
 
 def render():
     st.markdown("## 👤 會員指揮中心")
+    if st.session_state.get("logged_in") and _needs_email_binding(st.session_state.get("username")):
+        st.warning("⚠️ 您目前透過 LINE 登入，但我們尚未從資料庫取得綁定的 Email。請前往首頁「📧 使用 Email 登入/註冊」區塊完成 Gmail 綁定，才能開通更多會員服務。")
     
     if "user_profile" not in st.session_state or not st.session_state.user_profile:
         st.warning("請先登入以存取會員功能")
