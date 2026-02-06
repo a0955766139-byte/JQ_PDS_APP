@@ -362,14 +362,22 @@ if __name__ == "__main__":
             st.markdown('<div class="auth-card">', unsafe_allow_html=True)
             auth_url = get_line_auth_url()
             if auth_url:
-                st.markdown(f'''<a href="{auth_url}" target="_self" class="line-btn"><img src="https://upload.wikimedia.org/wikipedia/commons/4/41/LINE_logo.svg">LINE 登入</a>''', unsafe_allow_html=True)
+                st.markdown(f'''
+                  <div style="text-align: center; margin-bottom: 20px;">
+                    <p style="color:#666; font-size:0.9em; margin-bottom: 15px;">🚀 推薦使用 LINE 快速通行</p>
+                    <a href="{auth_url}" target="_self" style="
+                        display: flex; align-items: center; justify-content: center;
+                        background-color: #06C755; color: white !important; 
+                        text-decoration: none; font-weight: bold; 
+                        padding: 12px 20px; border-radius: 10px;
+                        box-shadow: 0 4px 6px rgba(6, 199, 85, 0.2);
+                        transition: all 0.3s ease;">
+                        <img src="https://upload.wikimedia.org/wikipedia/commons/4/41/LINE_logo.svg" 
+                             style="width: 24px; height: 24px; margin-right: 10px; filter: brightness(0) invert(1);">
+                        LINE 快速登入 / 註冊
+                    </a>
+                </div>
+                ''', unsafe_allow_html=True)
             else:
-                st.error("⚠️ 系統錯誤：未檢測到 LINE Channel ID，無法提供登入。")
+                st.error("⚠️ 系統錯誤：未檢測到 LINE 設定，請聯繫管理員。")
             st.markdown("</div>", unsafe_allow_html=True)
-
-            st.divider()
-            if not auth_ui:
-                st.error("找不到 views/auth_ui.py，請確認檔案是否存在。")
-            else:
-                with st.expander("📧 使用 Email 登入/註冊"):
-                    auth_ui.render_auth()
