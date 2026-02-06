@@ -6,5 +6,5 @@ Pillow
 st-pages
 requests
 plotly==5.18.0
-pypinyinpypinyin
+pypinyin
 pypinyin
