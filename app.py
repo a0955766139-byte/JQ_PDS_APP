@@ -103,6 +103,26 @@ def show_member_app():
 if __name__ == "__main__":
     st.set_page_config(page_title="九能量導航", page_icon="⚛️", layout="wide")
 
+
+    # 在 st.set_page_config 之後加入
+    from streamlit.components.v1 import html as components_html
+
+    components_html("""
+         <script>
+           // 1. 插入 Web Manifest 連結
+          const link = document.createElement('link');
+         link.rel = 'manifest';
+           link.href = 'manifest.json';
+           document.head.appendChild(link);
+
+          // 2. 插入 Apple Touch Icon (針對 iPhone 優化)
+          const appleIcon = document.createElement('link');
+          appleIcon.rel = 'apple-touch-icon';
+          appleIcon.href = 'assets/logo.png';
+         document.head.appendChild(appleIcon);
+     </script>
+    """, height=0)
+
     # A. 初始化狀態
     if "logged_in" not in st.session_state: st.session_state.logged_in = False
     if "username" not in st.session_state: st.session_state.username = ""
@@ -132,6 +152,14 @@ if __name__ == "__main__":
         <style>
         .welcome-title { font-size: 42px; font-weight: 900; color: #2c3e50; margin-top: 20px; }
         .line-btn { display: flex; align-items: center; justify-content: center; background-color: #06C755; color: white !important; text-decoration: none; font-weight: bold; padding: 15px; border-radius: 10px; }
+        /* 隱藏右上角的 Streamlit 選單按鈕 */
+        #MainMenu {visibility: hidden;}
+    
+        /* 隱藏底部的 Streamlit 頁尾 (Made with Streamlit) */
+        footer {visibility: hidden;}
+    
+        /* 隱藏頂部的裝飾線，讓畫面更乾淨 */
+        header {visibility: hidden;}
         </style>
         """, unsafe_allow_html=True)
 
