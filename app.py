@@ -33,6 +33,12 @@ try:
 except ImportError:
     tab_journal = None
 
+try:
+    from views import auth_ui
+except ImportError:
+    auth_ui = None
+
+
 #==========================================
 # 2. 資料庫與輔助函式--- 資料庫連線 ---
 #==========================================
@@ -242,8 +248,15 @@ def show_member_app():
 if __name__ == "__main__":
     st.set_page_config(page_title="九能量導航", page_icon="⚛️", layout="wide")
 
-    # --- [C] 優先處理 LINE 回調邏輯 (攔截通行證) ---
-    # 這一段必須放在最前面，檢查網址有沒有 code
+    # --- [A] 初始化 Session State ---
+    if "logged_in" not in st.session_state:
+        st.session_state.logged_in = False
+    if "user" not in st.session_state:
+        st.session_state.user = None
+    if "username" not in st.session_state:
+        st.session_state.username = ""
+
+    # --- [B] 優先處理 LINE 回調邏輯 (LINE 登入通道) ---
     if "code" in st.query_params:
         with st.spinner("正在驗證 LINE 授權..."):
             code = st.query_params["code"]
@@ -251,54 +264,41 @@ if __name__ == "__main__":
             
             if line_name:
                 st.session_state.logged_in = True
+                st.session_state.user = {"email": "line_user"} # 模擬一個 user 物件
                 st.session_state.username = line_name
-                # 重要：登入成功後，清除網址上的 code，避免重新整理時重複驗證
                 st.query_params.clear()
                 st.rerun()
             else:
                 st.error(f"LINE 登入失敗：{error_msg}")
 
-    # --- 初始化狀態 ---
-    if "logged_in" not in st.session_state:
-        st.session_state.logged_in = False
-    if "username" not in st.session_state:
-        st.session_state.username = ""
-
-    # --- 判斷顯示畫面 ---
-    if st.session_state.logged_in:
+    # --- [C] 核心守門員：判斷是否進入 App ---
+    # 邏輯：如果有 'user' (Email登入) 或 'logged_in' (LINE登入) 則顯示會員內容
+    if st.session_state.user or st.session_state.logged_in:
         show_member_app()
+    
     else:
-        # V77 Landing Page
-        st.markdown("""
-        <style>
-        .stApp { background-color: #ffffff; }
-        .welcome-title { font-size: 42px; font-weight: 900; color: #2c3e50; margin-top: 20px; margin-bottom: 10px; line-height: 1.2; }
-        .welcome-sub { font-size: 18px; color: #666; margin-bottom: 30px; }
-        .login-card-right { background: white; padding: 40px; border-radius: 20px; box-shadow: 0 10px 40px rgba(0,0,0,0.08); border: 1px solid #eee; margin-top: 50px; text-align: center; }
-        .line-btn { display: flex; align-items: center; justify-content: center; background-color: #06C755; color: white !important; text-decoration: none; font-weight: bold; padding: 12px 20px; border-radius: 10px; margin-bottom: 10px; transition: all 0.3s ease; box-shadow: 0 4px 6px rgba(6, 199, 85, 0.2); }
-        .line-btn:hover { background-color: #05b34d; box-shadow: 0 6px 12px rgba(6, 199, 85, 0.3); transform: translateY(-2px); }
-        .line-btn img { width: 24px; height: 24px; margin-right: 10px; filter: brightness(0) invert(1); }
-        #MainMenu {visibility: hidden;} footer {visibility: hidden;}
-        </style>
-        """, unsafe_allow_html=True)
-
-        c_left, c_space, c_right = st.columns([6, 1, 4])
-        with c_left:
-            st.markdown('<div class="welcome-title">歡迎來到<br>九能量導航</div>', unsafe_allow_html=True)
-            st.markdown('<div class="welcome-sub">探索天賦 · 覺察能量 · 翻轉人生</div>', unsafe_allow_html=True)
-            st.image("https://images.unsplash.com/photo-1519681393784-d120267933ba?q=80&w=2070&auto=format&fit=crop", use_container_width=True)
-
-        with c_right:
-            st.write(""); st.write(""); st.write("")
-            with st.container(border=True):
-                st.subheader("會員登入")
-                st.write("")
-                auth_url = get_line_auth_url()
-                
-                if auth_url:
-                    st.markdown(f'''<a href="{auth_url}" target="_self" class="line-btn"><img src="https://upload.wikimedia.org/wikipedia/commons/4/41/LINE_logo.svg">LINE 帳號登錄 / 註冊</a>''', unsafe_allow_html=True)
-                else:
-                    st.error("⚠️ 系統錯誤：未檢測到 LINE Channel ID，無法提供服務。請聯繫管理員。")
-                
-                st.divider()
-                st.caption("© 2026 Jow-Jiun Culture")
+        # 尚未登入：顯示 Auth UI (包含 Email 登入/註冊 + LINE 按鈕)
+        if auth_ui:
+            # 這裡呼叫我們上一用 views/auth_ui.py 做的介面
+            auth_ui.render_auth() 
+            
+            # [選用] 如果您希望在 Email 登入下方保留 LINE 按鈕，可以加在這裡
+            st.divider()
+            auth_url = get_line_auth_url()
+            if auth_url:
+                st.markdown(f'''
+                <div style="text-align: center;">
+                    <p style="color:#666; font-size:0.9em;">或是使用社群帳號快速登入</p>
+                    <a href="{auth_url}" target="_self" style="
+                        display: inline-flex; align-items: center; justify-content: center;
+                        background-color: #06C755; color: white; text-decoration: none;
+                        font-weight: bold; padding: 10px 20px; border-radius: 8px;
+                        box-shadow: 0 2px 5px rgba(0,0,0,0.1);">
+                        <img src="https://upload.wikimedia.org/wikipedia/commons/4/41/LINE_logo.svg" 
+                        style="width: 20px; height: 20px; margin-right: 8px; filter: brightness(0) invert(1);">
+                        LINE 登入
+                    </a>
+                </div>
+                ''', unsafe_allow_html=True)
+        else:
+            st.error("找不到 views/auth_ui.py，請確認檔案是否存在。")

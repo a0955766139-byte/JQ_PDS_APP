@@ -2,7 +2,7 @@ import streamlit as st
 import datetime
 import time
 import os
-import requests # ★ 新增：這是跟 LINE 溝通的必要模組
+import requests #  LINE 溝通必要模組
 from supabase import create_client, Client
 
 #==========================================
@@ -27,6 +27,11 @@ try:
     from views import tab_family_matrix
 except ImportError:
     tab_family_matrix = None
+
+try:
+    from views import tab_journal
+except ImportError:
+    tab_journal = None
 
 #==========================================
 # 2. 資料庫與輔助函式--- 資料庫連線 ---
@@ -209,14 +214,22 @@ def show_member_app():
 
 # === Tab 4: 靈魂日記 ===
     with t_diary:
-        st.markdown("### 📔 靈魂書寫")
-        with st.form("journal_form"):
-            j_content = st.text_area("寫下你的心情...", height=150)
-            if st.form_submit_button("💾 保存日記"): 
-                if save_journal(st.session_state.username, j_content):
-                    st.success("日記已保存"); time.sleep(1); st.rerun()
-        for j in get_journals(st.session_state.username): 
-            st.markdown(f"<div class='journal-entry'><small>{j[1]}</small><br>{j[0]}</div>", unsafe_allow_html=True)
+        if tab_journal:
+            try:
+                tab_journal.render()
+            except Exception as e:
+                st.error(f"靈魂日記模組錯誤：{e}")
+        else:
+            st.markdown("### 📔 靈魂書寫")
+            with st.form("journal_form"):
+                j_content = st.text_area("寫下你的心情...", height=150)
+                if st.form_submit_button("💾 保存日記"):
+                    if save_journal(st.session_state.username, j_content):
+                        st.success("日記已保存")
+                        time.sleep(1)
+                        st.rerun()
+            for j in get_journals(st.session_state.username):
+                st.markdown(f"<div class='journal-entry'><small>{j[1]}</small><br>{j[0]}</div>", unsafe_allow_html=True)
 
 # === Tab 5: 會員中心 ===
     with t_mem:
