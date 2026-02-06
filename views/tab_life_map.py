@@ -274,7 +274,7 @@ def render():
     else:
         # 額度未滿：正常顯示新增功能
         with st.expander("➕ 新增親友資料", expanded=False):
-            with st.form("add_friend_form"):
+            with st.form("life_map_add_form"):
                 c1, c2 = st.columns(2)
                 new_name = c1.text_input("姓名")
                 new_eng = c2.text_input("英文名 (留空則自動生成)", placeholder="系統將自動轉換為威妥碼拼音")
