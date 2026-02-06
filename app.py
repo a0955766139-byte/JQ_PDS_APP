@@ -1,9 +1,16 @@
-import streamlit as st
 import datetime
-import time
+import json
 import os
+import time
+
 import requests #  LINE 溝通必要模組
+import streamlit as st
+from streamlit.components.v1 import html as components_html
 from supabase import create_client, Client
+
+PERSIST_USERNAME_KEY = "jq_username"
+PERSIST_TIMESTAMP_KEY = "jq_login_timestamp"
+PERSIST_EXPIRY = datetime.timedelta(days=7)
 
 #==========================================
 # 1. 核心設定與模組匯入--- 嘗試匯入各個模組 (加上防呆機制) ---
@@ -37,6 +44,57 @@ try:
     from views import auth_ui
 except ImportError:
     auth_ui = None
+
+
+def _persist_login_to_local_storage(username):
+    timestamp = datetime.datetime.now().isoformat()
+    components_html(f"""
+    <script>
+        window.localStorage.setItem("{PERSIST_USERNAME_KEY}", {json.dumps(username)});
+        window.localStorage.setItem("{PERSIST_TIMESTAMP_KEY}", {json.dumps(timestamp)});
+    </script>
+    """, height=0)
+
+
+def _clear_login_from_local_storage():
+    components_html(f"""
+    <script>
+        window.localStorage.removeItem("{PERSIST_USERNAME_KEY}");
+        window.localStorage.removeItem("{PERSIST_TIMESTAMP_KEY}");
+    </script>
+    """, height=0)
+
+
+def _read_login_from_local_storage():
+    payload = components_html(f"""
+    <script>
+        const username = window.localStorage.getItem("{PERSIST_USERNAME_KEY}");
+        const timestamp = window.localStorage.getItem("{PERSIST_TIMESTAMP_KEY}");
+        window.streamlit.setComponentValue({{username, timestamp}});
+    </script>
+    """, height=0)
+    return payload
+
+
+def _try_restore_persistent_login():
+    stored = _read_login_from_local_storage()
+    if not stored:
+        return False
+    username = stored.get("username")
+    timestamp = stored.get("timestamp")
+    if not username or not timestamp:
+        return False
+    try:
+        saved_at = datetime.datetime.fromisoformat(timestamp)
+    except Exception:
+        return False
+    if datetime.datetime.now() - saved_at > PERSIST_EXPIRY:
+        _clear_login_from_local_storage()
+        return False
+    st.session_state.logged_in = True
+    st.session_state.user = {"email": username}
+    st.session_state.username = username
+    return True
 
 
 #==========================================
@@ -141,8 +199,9 @@ def show_member_app():
     with st.sidebar:
         st.markdown(f"### 👤 {st.session_state.username}")
         if st.button("🚪 登出系統", use_container_width=True):
-            st.session_state.logged_in = False
-            st.rerun()
+            _clear_login_from_local_storage()
+            st.session_state.clear()
+            st.experimental_rerun()
             
     #==========================================
     # 頂部標題
@@ -255,6 +314,10 @@ if __name__ == "__main__":
     if "username" not in st.session_state:
         st.session_state.username = ""
 
+    if not st.session_state.logged_in:
+        if _try_restore_persistent_login():
+            st.experimental_rerun()
+
     if "code" in st.query_params:
         with st.spinner("正在驗證 LINE 授權..."):
             code = st.query_params["code"]
@@ -264,6 +327,7 @@ if __name__ == "__main__":
                 st.session_state.logged_in = True
                 st.session_state.user = {"email": "line_user"}  # 模擬一個 user 物件
                 st.session_state.username = line_name
+                _persist_login_to_local_storage(line_name)
                 st.query_params.clear()
                 st.rerun()
             else:
