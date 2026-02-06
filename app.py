@@ -17,7 +17,6 @@ except ImportError:
 # 2. 持久化登入助手 (使用 Query Params)
 #==========================================
 def _persist_login(username):
-    # 將用戶名存入網址，下次打開時可識別
     st.query_params["p_user"] = username
 
 def _clear_persist_login():
@@ -25,7 +24,6 @@ def _clear_persist_login():
         del st.query_params["p_user"]
 
 def _try_restore_login():
-    # 檢查網址是否有持久化參數
     p_user = st.query_params.get("p_user")
     if p_user and not st.session_state.get("logged_in"):
         st.session_state.logged_in = True
@@ -67,7 +65,9 @@ def get_line_profile_name(code):
         })
         if res.status_code != 200: return None, "Token 交換失敗"
         access_token = res.json().get("access_token")
-        p_res = requests.get("https://api.api.line.me/v2/profile", headers={"Authorization": f"Bearer {access_token}"})
+        # ✅ 校正：修正 API 網址，移除多餘的 api.
+        p_res = requests.get("https://api.line.me/v2/profile", headers={"Authorization": f"Bearer {access_token}"})
+        if p_res.status_code != 200: return None, "取得資料失敗"
         return p_res.json().get("displayName"), None
     except Exception as e: return None, str(e)
 
@@ -77,7 +77,8 @@ def get_line_profile_name(code):
 def show_member_app():
     with st.sidebar:
         st.markdown(f"### 👤 {st.session_state.username}")
-        if st.button("🚪 登出系統", use_container_width=True):
+        # ✅ 校正：使用 2026 最新語法 width="stretch"
+        if st.button("🚪 登出系統", width="stretch"):
             _clear_persist_login()
             st.session_state.clear()
             st.rerun()
@@ -103,70 +104,62 @@ def show_member_app():
 if __name__ == "__main__":
     st.set_page_config(page_title="九能量導航", page_icon="⚛️", layout="wide")
 
+    # ✅ 校正：隱藏右上角紅框按鈕與工具列
+    st.markdown("""
+        <style>
+        #MainMenu {visibility: hidden;}
+        footer {visibility: hidden;}
+        header {visibility: hidden;}
+        .welcome-title { font-size: 42px; font-weight: 900; color: #2c3e50; margin-top: 20px; }
+        .line-btn { display: flex; align-items: center; justify-content: center; background-color: #06C755; color: white !important; text-decoration: none; font-weight: bold; padding: 15px; border-radius: 10px; }
+        </style>
+    """, unsafe_allow_html=True)
 
-    # 在 st.set_page_config 之後加入
+    # 注入 PWA 標籤
     from streamlit.components.v1 import html as components_html
-
     components_html("""
          <script>
-           // 1. 插入 Web Manifest 連結
           const link = document.createElement('link');
-         link.rel = 'manifest';
-           link.href = 'manifest.json';
-           document.head.appendChild(link);
-
-          // 2. 插入 Apple Touch Icon (針對 iPhone 優化)
+          link.rel = 'manifest'; link.href = 'manifest.json';
+          document.head.appendChild(link);
           const appleIcon = document.createElement('link');
-          appleIcon.rel = 'apple-touch-icon';
-          appleIcon.href = 'assets/logo.png';
-         document.head.appendChild(appleIcon);
-     </script>
+          appleIcon.rel = 'apple-touch-icon'; appleIcon.href = 'assets/logo.png';
+          document.head.appendChild(appleIcon);
+         </script>
     """, height=0)
 
     # A. 初始化狀態
     if "logged_in" not in st.session_state: st.session_state.logged_in = False
     if "username" not in st.session_state: st.session_state.username = ""
 
-    # B. 嘗試自動登入
-    _try_restore_login()
-
-    # C. 處理 LINE 回調
+    # B. 校正順序：優先處理 LINE 回調驗證
     if "code" in st.query_params:
         code = st.query_params["code"]
-        # 先清除 code 避免重複驗證
-        del st.query_params["code"]
-        with st.spinner("驗證中..."):
+        del st.query_params["code"] # 立即清除，防止無限重整
+        with st.spinner("能量驗證中..."):
             name, err = get_line_profile_name(code)
             if name:
                 st.session_state.logged_in = True
                 st.session_state.username = name
                 _persist_login(name)
                 st.rerun()
+            else:
+                st.error(f"登入失敗: {err}")
 
-    # D. 判斷顯示畫面
+    # C. 若無驗證代碼，嘗試還原持久化狀態
+    if not st.session_state.logged_in:
+        if _try_restore_login():
+            st.rerun()
+
+    # D. 介面分流
     if st.session_state.logged_in:
         show_member_app()
     else:
-        # Landing Page 渲染
-        st.markdown("""
-        <style>
-        .welcome-title { font-size: 42px; font-weight: 900; color: #2c3e50; margin-top: 20px; }
-        .line-btn { display: flex; align-items: center; justify-content: center; background-color: #06C755; color: white !important; text-decoration: none; font-weight: bold; padding: 15px; border-radius: 10px; }
-        /* 隱藏右上角的 Streamlit 選單按鈕 */
-        #MainMenu {visibility: hidden;}
-    
-        /* 隱藏底部的 Streamlit 頁尾 (Made with Streamlit) */
-        footer {visibility: hidden;}
-    
-        /* 隱藏頂部的裝飾線，讓畫面更乾淨 */
-        header {visibility: hidden;}
-        </style>
-        """, unsafe_allow_html=True)
-
+        # 顯示漂亮的首頁
         col1, _, col2 = st.columns([6, 1, 4])
         with col1:
             st.markdown('<div class="welcome-title">歡迎來到<br>九能量導航</div>', unsafe_allow_html=True)
-            st.image("https://images.unsplash.com/photo-1519681393784-d120267933ba?q=80&w=2070&auto=format&fit=crop", use_container_width=True)
+            st.image("https://images.unsplash.com/photo-1519681393784-d120267933ba?q=80&w=2070&auto=format&fit=crop", width="stretch")
         
         with col2:
             st.write(""); st.write("")
