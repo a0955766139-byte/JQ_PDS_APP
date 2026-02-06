@@ -248,7 +248,6 @@ def show_member_app():
 if __name__ == "__main__":
     st.set_page_config(page_title="九能量導航", page_icon="⚛️", layout="wide")
 
-    # --- [A] 初始化 Session State ---
     if "logged_in" not in st.session_state:
         st.session_state.logged_in = False
     if "user" not in st.session_state:
@@ -256,12 +255,11 @@ if __name__ == "__main__":
     if "username" not in st.session_state:
         st.session_state.username = ""
 
-    # --- [B] 優先處理 LINE 回調邏輯 (LINE 登入通道) ---
     if "code" in st.query_params:
         with st.spinner("正在驗證 LINE 授權..."):
             code = st.query_params["code"]
             line_name, error_msg = get_line_profile_name(code)
-            
+
             if line_name:
                 st.session_state.logged_in = True
                 st.session_state.user = {"email": "line_user"} # 模擬一個 user 物件
@@ -271,34 +269,30 @@ if __name__ == "__main__":
             else:
                 st.error(f"LINE 登入失敗：{error_msg}")
 
-    # --- [C] 核心守門員：判斷是否進入 App ---
-    # 邏輯：如果有 'user' (Email登入) 或 'logged_in' (LINE登入) 則顯示會員內容
     if st.session_state.user or st.session_state.logged_in:
         show_member_app()
-    
-    else:
-        # 尚未登入：顯示 Auth UI (包含 Email 登入/註冊 + LINE 按鈕)
-        if auth_ui:
-            # 這裡呼叫我們上一用 views/auth_ui.py 做的介面
-            auth_ui.render_auth() 
-            
-            # [選用] 如果您希望在 Email 登入下方保留 LINE 按鈕，可以加在這裡
-            st.divider()
-            auth_url = get_line_auth_url()
-            if auth_url:
-                st.markdown(f'''
-                <div style="text-align: center;">
-                    <p style="color:#666; font-size:0.9em;">或是使用社群帳號快速登入</p>
-                    <a href="{auth_url}" target="_self" style="
-                        display: inline-flex; align-items: center; justify-content: center;
-                        background-color: #06C755; color: white; text-decoration: none;
-                        font-weight: bold; padding: 10px 20px; border-radius: 8px;
-                        box-shadow: 0 2px 5px rgba(0,0,0,0.1);">
-                        <img src="https://upload.wikimedia.org/wikipedia/commons/4/41/LINE_logo.svg" 
-                        style="width: 20px; height: 20px; margin-right: 8px; filter: brightness(0) invert(1);">
-                        LINE 登入
-                    </a>
-                </div>
-                ''', unsafe_allow_html=True)
-        else:
-            st.error("找不到 views/auth_ui.py，請確認檔案是否存在。")
+        st.stop()
+
+    if not auth_ui:
+        st.error("找不到 views/auth_ui.py，請確認檔案是否存在。")
+        st.stop()
+
+    auth_ui.render_auth()
+
+    st.divider()
+    auth_url = get_line_auth_url()
+    if auth_url:
+        st.markdown(f'''
+        <div style="text-align: center;">
+            <p style="color:#666; font-size:0.9em;">或是使用社群帳號快速登入</p>
+            <a href="{auth_url}" target="_self" style="
+                display: inline-flex; align-items: center; justify-content: center;
+                background-color: #06C755; color: white; text-decoration: none;
+                font-weight: bold; padding: 10px 20px; border-radius: 8px;
+                box-shadow: 0 2px 5px rgba(0,0,0,0.1);">
+                <img src="https://upload.wikimedia.org/wikipedia/commons/4/41/LINE_logo.svg" 
+                style="width: 20px; height: 20px; margin-right: 8px; filter: brightness(0) invert(1);">
+                LINE 登入
+            </a>
+        </div>
+        ''', unsafe_allow_html=True)

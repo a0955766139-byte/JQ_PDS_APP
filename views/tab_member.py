@@ -1,8 +1,9 @@
 import streamlit as st
 import datetime
 import os
-import time  # <--- ✅ 補上這一行，不然等一下按保存會崩潰！
+import time  
 from supabase import create_client
+from views.permission_config import get_user_tier  #「喬鈞心學研究院」 (專區權限)
 
 # --- 資料庫連線 (標準化) ---
 @st.cache_resource

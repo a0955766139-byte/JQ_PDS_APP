@@ -4,7 +4,7 @@ import os
 import time
 from supabase import create_client
 from pypinyin import pinyin, Style  # 引入拼音套件
-
+from views.permission_config import get_user_tier
 # 引入 UI 模組
 from views import life_map_ui
 
@@ -213,6 +213,24 @@ def _render_chart_details_section(target, username, all_existing_categories):
 def render():
     username = st.session_state.username
     
+    # === [新增] 1. 權限檢查邏輯 ===
+    # 從資料庫抓取該用戶的 role (身分)
+    user_role = "registered" # 預設值
+    if supabase:
+        try:
+            # 查詢 users 表格
+            u_res = supabase.table("users").select("role").eq("username", username).execute()
+            if u_res.data:
+                user_role = u_res.data[0].get("role", "registered")
+        except:
+            pass # 查詢失敗就當作一般會員
+    
+    # 取得該等級的詳細權限設定 (讀取剛剛寫的 config)
+    tier_config = get_user_tier(user_role)
+    limit_count = tier_config["map_limit"]
+    # ============================
+
+    # 準備資料
     all_profiles = []
     me = _get_my_profile(username)
     if me: all_profiles.append(me)
@@ -220,51 +238,64 @@ def render():
     
     friends = _get_saved_charts(username)
     all_profiles.extend(friends)
+    
+    # 計算目前已用額度 (不含本人)
+    current_used = len(friends)
 
     existing_cats = list(set([p.get('category', '未分類') for p in friends]))
 
+    # --- 上半部：詳細資料 ---
     if "selected_profile_id" not in st.session_state: st.session_state.selected_profile_id = "ME"
     target = next((x for x in all_profiles if x['id'] == st.session_state.selected_profile_id), None)
-    
     if not target and all_profiles:
         target = all_profiles[0]
         st.session_state.selected_profile_id = target['id']
-
     if target:
         _render_chart_details_section(target, username, existing_cats)
     
     st.divider()
 
-    st.markdown("### 👨‍👩‍👧‍👦 家族矩陣：親友檔案庫")
+    # --- 下半部：家族矩陣列表 (含額度顯示) ---
+    st.markdown(f"### 👨‍👩‍👧‍👦 家族矩陣：親友檔案庫")
+    
+    # === [新增] 額度進度條 ===
+    st.caption(f"目前等級：{tier_config['name']} | 額度使用：{current_used} / {limit_count} 位")
+    if limit_count > 0:
+        bar_val = min(current_used / limit_count, 1.0)
+        # 如果快滿了顯示紅色，否則顯示藍色 (Streamlit 預設)
+        st.progress(bar_val)
+    # ========================
 
-    with st.expander("➕ 新增親友資料", expanded=False):
-        with st.form("add_friend_form"):
-            c1, c2 = st.columns(2)
-            new_name = c1.text_input("姓名")
-            # 提示用戶可以留空
-            new_eng = c2.text_input("英文名 (留空則自動生成)", placeholder="系統將自動轉換為威妥碼拼音")
-            
-            new_bd = st.date_input(
-                "出生日期", 
-                min_value=datetime.date(1900,1,1),
-                max_value=datetime.date.today()
-            )
-            
-            st.caption("設定關係分類")
-            c_cat_1, c_cat_2 = st.columns([1, 1])
-            with c_cat_1:
-                base_opts = sorted(list(set(["家人", "朋友", "同事", "客戶", "未分類"] + existing_cats)))
-                sel_new_cat = st.selectbox("選擇現有分類", base_opts)
-            with c_cat_2:
-                manual_new_cat = st.text_input("或建立新分類", placeholder="例如: 大學同學")
-            
-            if st.form_submit_button("建立檔案", type="primary"):
-                final_new_cat = manual_new_cat.strip() if manual_new_cat.strip() else sel_new_cat
-                _save_chart(username, new_name, new_eng, new_bd, final_new_cat, is_me=False)
-                st.toast(f"已新增 {new_name} 到 {final_new_cat}！")
-                time.sleep(1)
-                st.rerun()
+    # === [關鍵] 判斷是否鎖住新增功能 ===
+    if current_used >= limit_count:
+        # 額度已滿：顯示警告卡片，不顯示新增表單
+        st.warning(f"⚠️ 您的親友名單已達上限 ({limit_count}位)。")
+        st.info("💡 想要記錄更多親友？請升級會員方案解鎖更多名額！")
+    else:
+        # 額度未滿：正常顯示新增功能
+        with st.expander("➕ 新增親友資料", expanded=False):
+            with st.form("add_friend_form"):
+                c1, c2 = st.columns(2)
+                new_name = c1.text_input("姓名")
+                new_eng = c2.text_input("英文名 (留空則自動生成)", placeholder="系統將自動轉換為威妥碼拼音")
+                new_bd = st.date_input("出生日期", min_value=datetime.date(1900,1,1), max_value=datetime.date.today())
+                
+                st.caption("設定關係分類")
+                c_cat_1, c_cat_2 = st.columns([1, 1])
+                with c_cat_1:
+                    base_opts = sorted(list(set(["家人", "朋友", "同事", "客戶", "未分類"] + existing_cats)))
+                    sel_new_cat = st.selectbox("選擇現有分類", base_opts)
+                with c_cat_2:
+                    manual_new_cat = st.text_input("或建立新分類", placeholder="例如: 大學同學")
+                
+                if st.form_submit_button("建立檔案", type="primary"):
+                    final_new_cat = manual_new_cat.strip() if manual_new_cat.strip() else sel_new_cat
+                    _save_chart(username, new_name, new_eng, new_bd, final_new_cat, is_me=False)
+                    st.toast(f"已新增 {new_name} 到 {final_new_cat}！")
+                    time.sleep(1)
+                    st.rerun()
 
+    # 分類分頁渲染 (保持不變)
     categories_map = {"全部": all_profiles}
     for p in all_profiles:
         cat = p.get('category', '未分類') or '未分類'
@@ -285,10 +316,7 @@ def render():
                 for idx, p in enumerate(profiles):
                     lpn = sum(int(d) for d in p['birthdate'].strftime("%Y%m%d"))
                     while lpn > 9: lpn = sum(int(d) for d in str(lpn))
-                    
-                    is_selected = (st.session_state.selected_profile_id == p['id'])
-                    btn_type = "primary" if is_selected else "secondary"
-                    
+                    btn_type = "primary" if st.session_state.selected_profile_id == p['id'] else "secondary"
                     if cols[idx % 4].button(f"{p['name']}\n{lpn}號人", key=f"btn_{tab_name}_{p['id']}", use_container_width=True, type=btn_type):
                         st.session_state.selected_profile_id = p['id']
                         st.rerun()
