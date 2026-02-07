@@ -159,7 +159,7 @@ def _render_chart_details_section(target, username, all_existing_categories):
     # 編輯模式：顯示表單
     if is_editing:
         with st.container(border=True):
-            with st.form(key=f"edit_form_{target['id']}"):
+            with st.form(key=f"life_edit_form_{target['id']}"):
                 e_name = st.text_input("姓名", value=target['name'])
                 
                 # 提示用戶可以留空
