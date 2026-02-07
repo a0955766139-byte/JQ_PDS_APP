@@ -148,11 +148,11 @@ def _render_chart_details_section(target, username, all_existing_categories):
 
     with c_btn:
         if is_editing:
-            if st.button("取消", key=f"cancel_{target['id']}"):
+            if st.button("取消", key=f"life_cancel_{target['id']}"):
                 st.session_state[edit_key] = False
                 st.rerun()
         else:
-            if st.button("📝 編輯", key=f"edit_{target['id']}"):
+            if st.button("📝 編輯", key=f"life_edit_{target['id']}"):
                 st.session_state[edit_key] = True
                 st.rerun()
 

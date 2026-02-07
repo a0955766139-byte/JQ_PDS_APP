@@ -200,11 +200,11 @@ def render():
             st.markdown(f"#### 🧬 {target['name']} 的能量導航")
         with c_btn:
             if is_editing:
-                if st.button("取消", key=f"cancel_{target['id']}"):
+                if st.button("取消", key=f"fam_cancel_{target['id']}"):
                     st.session_state[edit_key] = False
                     st.rerun()
             else:
-                if st.button("📝 編輯", key=f"edit_{target['id']}"):
+                if st.button("📝 編輯", key=f"fam_edit_{target['id']}"):
                     st.session_state[edit_key] = True
                     st.rerun()
 
