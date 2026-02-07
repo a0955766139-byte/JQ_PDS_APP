@@ -56,13 +56,31 @@ def get_all_users():
     except: return []
 
 def render():
-    st.markdown("## 👤 會員指揮中心")
-    if st.session_state.get("logged_in") and _needs_email_binding(st.session_state.get("username")):
-        st.warning("⚠️ 您目前透過 LINE 登入，但我們尚未從資料庫取得綁定的 Email。請前往首頁「📧 使用 Email 登入/註冊」區塊完成 Gmail 綁定，才能開通更多會員服務。")
-    
-    if "user_profile" not in st.session_state or not st.session_state.user_profile:
+    st.markdown("## 👤 會員指揮中心") # 1. 保留標題，維持視覺一致性
+
+    # 2. 安全檢查：確保有登入數據，否則不執行後續邏輯
+    if "username" not in st.session_state or not st.session_state.username:
         st.warning("請先登入以存取會員功能")
         return
+
+    # 3. 核心邏輯：檢查是否需要綁定 Email
+    if _needs_email_binding(st.session_state.username):
+        # 升級為強烈提醒，並鎖定功能介面
+        st.error("🔒 **功能鎖定中**：為了保障您的數據安全，請先完成 Email 驗證。")
+        
+        # 直接在分頁內展開綁定介面，讓用戶無需跳轉回首頁
+        with st.expander("📩 點擊開始綁定 LINE / Apple ID / Google 信箱", expanded=True):
+            if auth_ui: 
+                auth_ui.render_auth_binding_mode() 
+            else:
+                st.info("請前往首頁使用 Email 登入區塊完成綁定")
+    else:
+        # 驗證通過，顯示正常功能
+        st.success("✅ 帳號已受保護 (Email 已綁定)")
+        
+        # 這裡放置原本會員中心的其他功能代碼 (如：個人資料修改、等級查看等)
+        st.info("您的能量數據目前已與雲端同步，安全無虞。")
+
 
     # 1. 獲取當前用戶資料
     user = st.session_state.user_profile

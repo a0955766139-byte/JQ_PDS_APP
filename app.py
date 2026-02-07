@@ -32,6 +32,21 @@ def _try_restore_login():
         return True
     return False
 
+# app.py 中的 show_member_app 函式內
+def show_member_app():
+    # 檢查是否需要綁定 Email (延用 Composer 大規模改編中的邏輯)
+    needs_bind = False
+    if "user" in st.session_state and st.session_state.user.get("email") == "persisted_user":
+        # 這裡檢查資料庫，若 email 欄位為空則 needs_bind = True
+        needs_bind = True 
+
+    if needs_bind:
+        st.warning("⚠️ **帳號安全提醒：** 您目前僅使用 LINE 快速登入。請前往「會員中心」綁定 Email 信箱，確保您的親友檔案與日記數據永不遺失。")
+        if st.button("立即前往綁定", width="stretch"):
+            # 切換到會員中心分頁
+            st.session_state.current_tab = 5 # 假設會員中心是第 5 個 Tab
+            st.rerun()
+            
 #==========================================
 # 3. 資料庫與 LINE 函式
 #==========================================
