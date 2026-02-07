@@ -34,6 +34,15 @@ def _try_restore_login():
 
 # app.py 中的 show_member_app 函式內
 def show_member_app():
+
+    # 左側紫色欄位
+    with st.sidebar:
+        st.markdown(f"### 👤 {st.session_state.username}")
+        if st.button("🚪 登出系統", width="stretch"):
+            _clear_persist_login()
+            st.session_state.clear()
+            st.rerun()
+
     # 檢查是否需要綁定 Email (延用 Composer 大規模改編中的邏輯)
     needs_bind = False
     if "user" in st.session_state and st.session_state.user.get("email") == "persisted_user":
@@ -46,7 +55,7 @@ def show_member_app():
             # 切換到會員中心分頁
             st.session_state.current_tab = 5 # 假設會員中心是第 5 個 Tab
             st.rerun()
-            
+
 #==========================================
 # 3. 資料庫與 LINE 函式
 #==========================================

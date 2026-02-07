@@ -10,7 +10,12 @@ try:
     from views import auth_ui
 except ImportError:
     auth_ui = None
-    
+
+try:
+    from views import auth_ui
+except ImportError:
+    auth_ui = None
+
 # --- 資料庫連線 (標準化) ---
 @st.cache_resource
 def init_connection():
