@@ -9,10 +9,10 @@ from supabase import create_client, Client
 # 1. 核心設定與模組匯入
 #==========================================
 try:
-    from views import tab_life_map, tab_divination, tab_member, tab_family_matrix, tab_journal, auth_ui
+    # 這裡加入剛剛建立的 ads_manager
+    from views import tab_life_map, tab_divination, tab_member, tab_family_matrix, tab_journal, auth_ui, ads_manager
 except ImportError:
-    tab_life_map = tab_divination = tab_member = tab_family_matrix = tab_journal = auth_ui = None
-
+    tab_life_map = tab_divination = tab_member = tab_family_matrix = tab_journal = auth_ui = ads_manager = None
 #==========================================
 # 2. 持久化登入助手 (使用 Query Params)
 #==========================================
@@ -86,7 +86,11 @@ def show_member_app():
     st.markdown(f"#### Hi, {st.session_state.username} | 九能量導航系統")
     tabs = st.tabs(["🏠 首頁", "🧬 人生地圖", "🔮 宇宙指引", "👨‍👩‍👧‍👦 家族矩陣", "📔 靈魂日記", "👤 會員中心"])
     
-    with tabs[0]: st.subheader(f"歡迎回到能量中心")
+    with tabs[0]: 
+        st.subheader(f"歡迎回到能量中心")
+    # 呼叫廣告模組
+    if 'ads_manager' in locals() or 'ads_manager' in globals():
+        ads_manager.render_home_ads()    
     with tabs[1]: 
         if tab_life_map: tab_life_map.render()
     with tabs[2]: 
