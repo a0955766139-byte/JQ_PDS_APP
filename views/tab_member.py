@@ -7,14 +7,12 @@ from views.permission_config import get_user_tier  #「喬鈞心學研究院」 
 
 
 try:
-    from views import auth_ui
+    # 同時匯入這兩個關鍵零件
+    from views import auth_ui, ads_manager
 except ImportError:
+    # 萬一零件遺失，確保系統不崩潰
     auth_ui = None
-
-try:
-    from views import auth_ui
-except ImportError:
-    auth_ui = None
+    ads_manager = None
 
 # --- 資料庫連線 (標準化) ---
 @st.cache_resource
