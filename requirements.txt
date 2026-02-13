@@ -1,4 +1,4 @@
-streamlit
+sstreamlit==1.31.0
 supabase
 plotly
 pandas
@@ -6,6 +6,5 @@ Pillow
 st-pages
 requests
 plotly==5.18.0
-pypinyin
 pypinyin
 qrcode
