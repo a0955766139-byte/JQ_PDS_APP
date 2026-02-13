@@ -8,3 +8,4 @@ requests
 plotly==5.18.0
 pypinyin
 pypinyin
+qrcode
