@@ -214,9 +214,6 @@ if __name__ == "__main__":
         else:
             st.error(f"LINE 登入失敗：{err}")
 
-    if not st.session_state.logged_in:
-        _try_restore_login()
-
     if st.session_state.logged_in:
         show_member_app()
     else:
