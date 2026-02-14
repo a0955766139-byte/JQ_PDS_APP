@@ -3,49 +3,44 @@ import datetime
 import os
 import time  
 from supabase import create_client
-from views.permission_config import get_user_tier  #「喬鈞心學研究院」 (專區權限)
 
-
+# --- 核心權限對接 ---
 try:
-    # 同時匯入這兩個關鍵零件
+    from views.permission_config import get_user_tier
     from views import auth_ui, ads_manager
 except ImportError:
-    # 萬一零件遺失，確保系統不崩潰
     auth_ui = None
     ads_manager = None
 
-# --- 資料庫連線 (標準化) ---
+# --- 資料庫連線 (保持穩定) ---
 @st.cache_resource
 def init_connection():
-    url = os.environ.get("SUPABASE_URL")
-    key = os.environ.get("SUPABASE_KEY")
-    # 兼容本地與雲端
-    if not url or not key:
-        try:
-            url = st.secrets["supabase"]["url"]
-            key = st.secrets["supabase"]["key"]
-        except: pass
+    url = os.environ.get("SUPABASE_URL") or st.secrets.get("supabase", {}).get("url")
+    key = os.environ.get("SUPABASE_KEY") or st.secrets.get("supabase", {}).get("key")
     if url and key: return create_client(url, key)
     return None
 
 supabase = init_connection()
 
-def update_profile(username, full_name, eng_name, birth_date):
+# 🛠️ 修正 1：更新邏輯改用 line_user_id 鎖定
+def update_profile(line_user_id, full_name, eng_name, birth_date):
     if not supabase: return False
     try:
         data = {
             "full_name": full_name,
             "english_name": eng_name,
-            "birth_date": birth_date.isoformat()
+            "birth_date": birth_date.isoformat(),
+            "last_updated": datetime.datetime.now().isoformat()
         }
-        supabase.table("users").update(data).eq("username", username).execute()
+        # 💡 關鍵：使用永久不變的 ID 作為過濾條件
+        supabase.table("users").update(data).eq("line_user_id", line_user_id).execute()
         return True
     except Exception as e:
         st.error(f"更新失敗: {e}")
         return False
 
 def get_all_users():
-    """管理員專用：獲取所有用戶"""
+    """管理員專用：讀取所有具備 ID 的真實用戶"""
     if not supabase: return []
     try:
         res = supabase.table("users").select("*").order("created_at", desc=True).execute()
@@ -55,65 +50,69 @@ def get_all_users():
 def render():
     st.markdown("## 👤 會員指揮中心")
     
-    if "user_profile" not in st.session_state or not st.session_state.user_profile:
-        st.warning("請先登入以存取會員功能")
+    # 💡 修正 2：改讀取的關鍵變數 (ID 與 顯示姓名)
+    line_id = st.session_state.get("line_user_id")
+    display_name = st.session_state.get("username", "未知用戶")
+    
+    if not line_id:
+        st.warning("⚠️ 請先透過 LINE 快速登入以啟動會員功能")
         return
 
-    # 1. 獲取當前用戶資料
-    user = st.session_state.user_profile
-    username = st.session_state.username
+    # 獲取緩存的 Profile 資料
+    user = st.session_state.get('user_profile', {})
     role = user.get('role', 'user')
-    plan = user.get('plan', 'free')
+    
+    # 動態計算當前權限等級
+    tier_info = get_user_tier(display_name) 
 
     # --- 上半部：個人檔案卡 ---
     col1, col2 = st.columns([1, 2])
     with col1:
-        st.info(f"當前身份：{role.upper()} | 方案：{plan.upper()}")
+        # 顯示視覺上的尊榮標籤
+        st.info(f"當前身分：{display_name}")
+        st.success(f"權限：{tier_info['label']}")
         if role == 'admin':
-            st.success("🛡️ 您擁有最高指揮權限")
+            st.warning("🛡️ 管理員模式已開啟")
     
     with col2:
         with st.form("profile_form"):
-            st.subheader("📝 編輯我的原始設定")
-            new_name = st.text_input("中文暱稱", value=user.get('full_name', ''))
+            st.subheader("📝 編輯我的能量原始設定")
+            # 這裡顯示 LINE 抓到的名字作為預設
+            new_name = st.text_input("顯示暱稱", value=user.get('full_name', display_name))
             new_eng = st.text_input("英文名 (用於性情計算)", value=user.get('english_name', ''))
             
-            # 處理日期格式
+            # 處理日期
             bd_val = user.get('birth_date')
             if isinstance(bd_val, str):
                 bd_val = datetime.datetime.strptime(bd_val, "%Y-%m-%d").date()
+            new_bd = st.date_input("出生日期", value=bd_val if bd_val else datetime.date(1990,9,8))
             
-            new_bd = st.date_input("出生日期", value=bd_val if bd_val else datetime.date(1990,1,1))
-            
-            if st.form_submit_button("💾 保存設定"):
-                if update_profile(username, new_name, new_eng, new_bd):
-                    st.toast("✅ 資料已更新！", icon="🎉")
-                    # 更新 Session 狀態
+            if st.form_submit_button("💾 保存並同步 ID 能量"):
+                # 💡 關鍵：傳入 joe1369 進行物理存檔
+                if update_profile(line_id, new_name, new_eng, new_bd):
+                    st.toast("✅ 資料已與 LINE ID 成功對位！", icon="🎉")
+                    # 更新 Session 避免重複抓取
                     st.session_state.user_profile['full_name'] = new_name
                     st.session_state.user_profile['english_name'] = new_eng
                     st.session_state.user_profile['birth_date'] = new_bd.isoformat()
-                    time.sleep(1) # <--- 這裡需要 import time
+                    time.sleep(1)
                     st.rerun()
 
     st.divider()
 
     # --- 下半部：管理員上帝視角 (Admin Only) ---
     if role == 'admin':
-        st.markdown("### 👁️ 喬鈞文化流量監控 (Admin Area)")
-        st.markdown("這裡只有你能看見，掌握所有註冊會員的狀態。")
-        
+        st.markdown("### 👁️ 全域會員數據監控 (ID 導向)")
         all_users = get_all_users()
         if all_users:
             st.dataframe(
                 all_users, 
                 column_config={
-                    "created_at": "註冊時間",
-                    "full_name": "暱稱",
-                    "username": "LINE ID",
-                    "role": "權限"
+                    "line_user_id": "永久 ID (sub)",
+                    "full_name": "當前暱稱",
+                    "birth_date": "生日",
+                    "role": "權限等級"
                 },
                 use_container_width=True
             )
-            st.metric("目前總會員數", len(all_users))
-        else:
-            st.info("目前尚無其他會員資料")
+            st.metric("總註冊靈魂數", len(all_users))

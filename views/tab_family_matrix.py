@@ -51,28 +51,52 @@ def _get_my_profile(username):
     except: return None
 
 def _get_saved_charts(username):
-    if not supabase: return []
-    try:
-        res = supabase.table("saved_charts").select("*").eq("user_id", username).order("created_at", desc=True).execute()
-        data = []
-        for d in res.data:
-            bd = datetime.datetime.strptime(d['birth_date'], "%Y-%m-%d").date() if d.get('birth_date') else datetime.date(1990,1,1)
-            data.append({"id": d['id'], "name": d['name'], "english_name": d.get('english_name', ""), "birthdate": bd, "type": "friend"})
-        return data
-    except: return []
+    friends_raw = get_user_charts() # 這是您寫好的那個
+friends = []
+for d in friends_raw:
+    bd = datetime.datetime.strptime(d['birth_date'], "%Y-%m-%d").date() if d.get('birth_date') else datetime.date(1990,1,1)
+    friends.append({"id": d['id'], "name": d['name'], "english_name": d.get('english_name', ""), "birthdate": bd, "type": "friend"})
 
-def _save_chart(username, name, eng, bd, uid=None, is_me=False):
+# --- 資料存取函式 ---
+def get_user_charts():
+    """核心：使用真實 ID (joe1369) 抓取資料庫 22 筆資料"""
+    # 💡 從 Session 抓取不變的 ID 標籤
+    line_id = st.session_state.get("line_user_id") 
+    
+    if not line_id:
+        st.warning("⚠️ 尚未取得 LINE ID，無法讀取數據")
+        return []
+    try:
+        # 💡 查詢語法：eq("user_id", "joe1369")
+        response = supabase.table("saved_charts") \
+            .select("*") \
+            .eq("line_user_id", line_id) \
+            .execute()
+        return response.data
+    except Exception as e:
+        st.error(f"讀取資料庫失敗: {e}")
+        return []
+
+def _save_chart(line_id, name, eng, bd, uid=None, is_me=False):
+    """存檔：確保門牌號碼是唯一 LINE ID"""
     if not supabase: return
     try:
         bd_str = bd.isoformat()
         if is_me:
-            supabase.table("users").upsert({"username": username, "full_name": name, "english_name": eng, "birth_date": bd_str}, on_conflict="username").execute()
+            # users 表格使用 line_user_id 作為 Unique Key
+            supabase.table("users").upsert({
+                "line_user_id": line_id, 
+                "full_name": name, 
+                "english_name": eng, 
+                "birth_date": bd_str
+            }, on_conflict="line_user_id").execute()
         else:
-            if uid: # Update
+            if uid: # 更新
                 supabase.table("saved_charts").update({"name": name, "english_name": eng, "birth_date": bd_str}).eq("id", uid).execute()
-            else: # Insert
-                supabase.table("saved_charts").insert({"user_id": username, "name": name, "english_name": eng, "birth_date": bd_str}).execute()
-    except Exception as e: st.error(f"存檔失敗: {e}")
+            else: # 新增：這裡 user_id 必須填入真實 ID
+                supabase.table("saved_charts").insert({"user_id": line_id, "name": name, "english_name": eng, "birth_date": bd_str}).execute()
+    except Exception as e: 
+        st.error(f"存檔失敗: {e}")
 
 def _delete_chart(chart_id):
     if not supabase: return
@@ -124,25 +148,33 @@ def _draw_pyramid_svg(chart_data, bd):
 
 # --- 主渲染邏輯 ---
 def render():
-    username = st.session_state.username
+    # 1. 💡 身分對位：後台用的門牌 (joe1369)
+    line_id = st.session_state.get("line_user_id") 
+    
+    # 2. 💡 視覺對位：前台顯現的稱呼 (喬鈞老師)
+    display_name = st.session_state.get("username", "未知用戶")
+    
+    # 3. 顯示歡迎語
+    st.markdown(f"### 👨‍👩‍👧‍👦 {display_name} 的家族矩陣") # 這裡顯示姓名
+    
+    # 4. 抓取親友資料 (帶入 ID 進行查詢)
+    friends_raw = get_user_charts() 
     
     st.markdown("### 👨‍👩‍👧‍👦 家族矩陣：親友檔案庫")
     
     # --- 1. 資料準備 ---
     all_profiles = []
     
-    # 取得自己
-    me = _get_my_profile(username)
-    if me: all_profiles.append(me)
-    else: 
-        # 預設一個空的自己，方便第一次使用
-        all_profiles.append({"id": "ME", "name": username, "english_name": "", "birthdate": datetime.date(1990,1,1), "type": "me"})
+    # 取得自己 (模擬或從 users 表抓)
+    all_profiles.append({"id": "ME", "name": display_name, "english_name": "", "birthdate": datetime.date(2000,1,1), "type": "me"})
 
-    # 取得親友
-    friends = _get_saved_charts(username)
-    all_profiles.extend(friends)
+    # 💡 修正：直接呼叫新寫好的 ID 化函式
+    friends_raw = get_user_charts()
+    for d in friends_raw:
+        bd = datetime.datetime.strptime(d['birth_date'], "%Y-%m-%d").date() if d.get('birth_date') else datetime.date(2000,1,1)
+        all_profiles.append({"id": d['id'], "name": d['name'], "english_name": d.get('english_name', ""), "birthdate": bd, "type": "friend"})
 
-    # 新增按鈕區
+    # 💡 修正：新增按鈕傳入 line_id 而非 username
     with st.expander("➕ 新增親友資料", expanded=False):
         with st.form("family_matrix_add_form"):
             c1, c2 = st.columns(2)
@@ -150,7 +182,7 @@ def render():
             new_eng = c2.text_input("英文名")
             new_bd = st.date_input("出生日期", min_value=datetime.date(1900,1,1))
             if st.form_submit_button("建立檔案", type="primary"):
-                _save_chart(username, new_name, new_eng, new_bd, is_me=False)
+                _save_chart(line_id, new_name, new_eng, new_bd, is_me=False)
                 st.rerun()
 
     st.divider()

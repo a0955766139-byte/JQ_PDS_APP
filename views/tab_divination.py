@@ -135,28 +135,34 @@ supabase = init_supabase()
 def get_today_str():
     return datetime.datetime.now().strftime("%Y-%m-%d")
 
-def check_today_draw(username):
-    """檢查用戶今日是否已抽牌"""
+def check_today_draw():
+    """使用永久 ID 檢查今日是否已抽牌"""
     today = get_today_str()
+    line_id = st.session_state.get("line_user_id") # 💡 改讀 ID
+    if not line_id: return None
+    
     try:
         response = supabase.table("daily_draws")\
             .select("*")\
-            .eq("username", username)\
+            .eq("line_user_id", line_id)\
             .eq("draw_date", today)\
             .execute()
         
-        if response.data and len(response.data) > 0:
-            return response.data[0] # 返回今日已抽的資料
+        if response.data: return response.data[0]
         return None
     except Exception as e:
         st.error(f"資料庫連線錯誤: {e}")
         return None
 
-def save_draw_result(username, card_data):
-    """儲存抽牌結果"""
+def save_draw_result(card_data):
+    """儲存結果：同時鎖定 ID 與 儲存當時姓名"""
     today = get_today_str()
+    line_id = st.session_state.get("line_user_id")
+    display_name = st.session_state.get("username")
+    
     payload = {
-        "username": username,
+        "line_user_id": line_id,   # 💡 永久門牌
+        "username": display_name,   # 💡 當時稱呼
         "draw_date": today,
         "title": card_data["title"],
         "poem": card_data["poem"],
@@ -172,18 +178,18 @@ def save_draw_result(username, card_data):
         st.error(f"儲存失敗: {e}")
         return False
 
-def get_draw_history(username):
-    """取得過去 7 天的歷史紀錄"""
+def get_draw_history():
+    """取得過去 7 天的靈魂軌跡 (認 ID)"""
+    line_id = st.session_state.get("line_user_id")
     try:
         response = supabase.table("daily_draws")\
             .select("draw_date, title, poem")\
-            .eq("username", username)\
+            .eq("line_user_id", line_id)\
             .order("draw_date", desc=True)\
             .limit(7)\
             .execute()
         return response.data
-    except Exception as e:
-        return []
+    except: return []
 
 # ==============================================================================
 # 2. UI 渲染邏輯 (Frontend Views)
@@ -210,51 +216,34 @@ def render_card_ui(card_data, is_new=False):
 def render_divination_view():
     inject_custom_css()
     
-    # 確保有登入狀態 (若主程式已處理，這裡做雙重確認)
-    if "username" not in st.session_state or not st.session_state.username:
-        st.warning("請先登入以使用宇宙指引功能。")
+    # 💡 雙軌身分對位
+    line_id = st.session_state.get("line_user_id")
+    display_name = st.session_state.get("username", "導航員")
+    
+    if not line_id:
+        st.warning("請先透過 LINE 快速登入，宇宙能量才能精準鎖定您的 ID。")
         return
 
-    user = st.session_state.username
-    st.header("🔮 每日宇宙指引")
+    st.header(f"🔮 {display_name} 的每日宇宙指引") # 💡 顯示姓名
     
     # 1. 檢查今日狀態
-    today_record = check_today_draw(user)
+    today_record = check_today_draw()
 
     col1, col2, col3 = st.columns([1, 2, 1])
-    
     with col2:
         if today_record:
-            # === 狀態 A: 今日已抽過 ===
-            st.info(f"📅 {today_record['draw_date']} 的指引已送達")
+            st.info(f"📅 今日指引已送達")
             render_card_ui(today_record, is_new=False)
-        
         else:
-            # === 狀態 B: 今日尚未抽牌 ===
-            st.markdown("""
-            <div style="text-align: center; padding: 40px; border: 2px dashed #ccc; border-radius: 15px; margin-bottom: 20px;">
-                <div style="font-size: 60px;">🃏</div>
-                <p style="color: #666;">心誠則靈，連結宇宙能量...</p>
-            </div>
-            """, unsafe_allow_html=True)
-            
-            # 抽牌按鈕
+            st.markdown('<div style="text-align: center; padding: 40px;">🃏<p>連結宇宙能量...</p></div>', unsafe_allow_html=True)
             if st.button("🔮 連結宇宙・抽取指引", use_container_width=True):
-                # 隨機邏輯
                 picked_card = random.choice(DIVINATION_CARDS)
-                
-                # 寫入資料庫
-                success = save_draw_result(user, picked_card)
-                
-                if success:
-                    # 強制刷新頁面以顯示結果
+                if save_draw_result(picked_card):
                     st.rerun()
 
     st.markdown("---")
-
-    # 2. 歷史紀錄區塊
     with st.expander("📜 查看過去 7 天的靈魂軌跡"):
-        history = get_draw_history(user)
+        history = get_draw_history()
         if history:
             for item in history:
                 st.markdown(f"""

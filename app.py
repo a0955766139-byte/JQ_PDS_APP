@@ -47,19 +47,27 @@ ads_manager = safe_import("ads_manager")
 #==========================================
 # 3. 持久化登入與資料庫工具
 #==========================================
-def _persist_login(username):
-    st.query_params["p_user"] = username
+def _persist_login(user_id):
+    # 💡 關鍵：這裡改存 line_user_id (字串)，防止字典型態錯誤
+    st.query_params["p_user"] = str(user_id)
 
 def _clear_persist_login():
     if "p_user" in st.query_params:
         del st.query_params["p_user"]
 
 def _try_restore_login():
-    p_user = st.query_params.get("p_user")
-    if p_user and not st.session_state.get("logged_in"):
+    p_user_id = st.query_params.get("p_user") # 這裡拿到的是 joe1369
+    if p_user_id and not st.session_state.get("logged_in"):
+        # 從資料庫抓取最新的顯示姓名
+        try:
+            res = supabase.table("users").select("username").eq("line_user_id", p_user_id).execute()
+            name = res.data[0]['username'] if res.data else "能量導航員"
+        except:
+            name = "能量導航員"
+
         st.session_state.logged_in = True
-        st.session_state.username = p_user
-        st.session_state.user = {"email": "persisted_user"}
+        st.session_state.line_user_id = p_user_id 
+        st.session_state.username = name 
         return True
     return False
 
@@ -74,13 +82,52 @@ supabase = init_connection()
 
 # LINE 登入相關函式 (保持您的內容不變...)
 def get_line_auth_url():
-    cid = os.environ.get("LINE_CHANNEL_ID") or st.secrets.get("line", {}).get("channel_id")
-    redir = os.environ.get("LINE_REDIRECT_URI", "https://jq-pds-app.onrender.com")
+    # 1. 抓取 Channel ID
+    cid = os.environ.get("LINE_CHANNEL_ID")
+    
+    # 2. 抓取 Redirect URI (移除硬編碼的舊網址，強制對齊環境變數)
+    redir = os.environ.get("LINE_REDIRECT_URI")
+    
+    # 防禦邏輯：如果變數沒設定，直接在介面顯示提醒
+    if not cid or not redir:
+        st.error(f"⚠️ 系統配置缺失：CID={bool(cid)}, REDIR={bool(redir)}")
+        return None
+        
     return f"https://access.line.me/oauth2/v2.1/authorize?response_type=code&client_id={cid}&redirect_uri={redir}&state=pds&scope=profile%20openid%20email"
 
+
 def get_line_profile_name(code):
-    # ... (您的 LINE 驗證邏輯保持不變)
-    return "游喬鈞", None # 測試回傳
+    """真實 LINE API 對接：獲取唯一 User ID 與 顯示姓名"""
+    try:
+        # 1. 向 LINE 請求 Access Token
+        token_url = "https://api.line.me/oauth2/v2.1/token"
+        headers = {"Content-Type": "application/x-www-form-urlencoded"}
+        data = {
+            "grant_type": "authorization_code",
+            "code": code,
+            "redirect_uri": os.environ.get("LINE_REDIRECT_URI"),
+            "client_id": os.environ.get("LINE_CHANNEL_ID"),
+            "client_secret": os.environ.get("LINE_CHANNEL_SECRET")
+        }
+        res = requests.post(token_url, headers=headers, data=data).json()
+        
+        # 2. 解析 ID Token (包含唯一 User ID)
+        id_token = res.get("id_token")
+        if not id_token:
+            return None, f"Token 獲取失敗: {res.get('error_description')}"
+            
+        # 3. 請求 Profile 資訊
+        profile_url = "https://api.line.me/v2/profile"
+        auth_headers = {"Authorization": f"Bearer {res.get('access_token')}"}
+        user_info = requests.get(profile_url, headers=auth_headers).json()
+        
+        # 💡 重大變更：同時回傳唯一 ID (userId) 與 顯示姓名 (displayName)
+        line_user_id = user_info.get("userId") # 這串亂碼是永久不變的門牌
+        display_name = user_info.get("displayName") # 這是會變的名字
+        
+        return {"id": line_user_id, "name": display_name}, None
+    except Exception as e:
+        return None, str(e)
 
 #==========================================
 # 4. 主程式介面 (合併後的 show_member_app)
@@ -127,15 +174,33 @@ if __name__ == "__main__":
     st.markdown("<style>#MainMenu {visibility: hidden;} footer {visibility: hidden;} header {visibility: hidden;}</style>", unsafe_allow_html=True)
 
     if "logged_in" not in st.session_state: st.session_state.logged_in = False
+    if "username" not in st.session_state: st.session_state.username = ""
+    if "user_profile" not in st.session_state: st.session_state.user_profile = None
     
     # LINE 回調處理
-    if "code" in st.query_params:
+    if "code" in st.query_params and not st.session_state.logged_in:
         code = st.query_params["code"]
-        name, err = get_line_profile_name(code)
-        if name:
+        user_data, err = get_line_profile_name(code)
+        if user_data:
+            line_id = user_data["id"] # 真實 ID: joe1369
+            line_name = user_data["name"] # 顯示姓名: 喬鈞老師
+
+            # 1. 寫入/更新用戶表，確保 line_user_id 存在
+            if supabase:
+                supabase.table("users").upsert({
+                    "line_user_id": line_id,
+                    "username": line_name,
+                    "last_login": datetime.datetime.now().isoformat()
+                }, on_conflict="line_user_id").execute()
+
+            # 2. 設定 Session 狀態
+            st.session_state.line_user_id = line_id
+            st.session_state.username = line_name
             st.session_state.logged_in = True
-            st.session_state.username = name
-            _persist_login(name)
+            
+            # 3. 持久化與清理
+            _persist_login(line_id) 
+            st.query_params.clear()
             st.rerun()
 
     if not st.session_state.logged_in:
