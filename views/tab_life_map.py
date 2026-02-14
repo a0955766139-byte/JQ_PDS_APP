@@ -46,28 +46,32 @@ def _auto_generate_english_name(chinese_name):
         return ""
 
 # --- 資料存取函式 ---
-def _get_my_profile(username):
+def _get_my_profile(line_user_id): # 💡 參數名稱建議改為 line_user_id
     if not supabase: return None
     try:
-        res = supabase.table("users").select("*").eq("username", username).execute()
+        # 💡 修正：使用 line_user_id 查詢本人資料
+        res = supabase.table("users").select("*").eq("line_user_id", line_user_id).execute()
         if res.data:
             d = res.data[0]
             bd = datetime.datetime.strptime(d['birth_date'], "%Y-%m-%d").date() if d.get('birth_date') else datetime.date(1990,1,1)
-            return {"id": "ME", "name": d.get('full_name', username), "english_name": d.get('english_name', ""), "birthdate": bd, "type": "me", "category": "本人"}
+            # 💡 姓名僅供顯示使用
+            return {"id": "ME", "name": d.get('full_name', "本人"), "english_name": d.get('english_name', ""), "birthdate": bd, "type": "me", "category": "本人"}
         return None
     except: return None
 
-def _get_saved_charts(username):
+def _get_saved_charts(line_user_id):
     if not supabase: return []
     try:
-        res = supabase.table("saved_charts").select("*").eq("user_id", username).order("created_at", desc=True).execute()
+        # 💡 修正：使用 line_user_id 抓取那 22 筆親友檔案
+        res = supabase.table("saved_charts").select("*").eq("user_id", line_user_id).order("created_at", desc=True).execute()
         data = []
         for d in res.data:
             bd = datetime.datetime.strptime(d['birth_date'], "%Y-%m-%d").date() if d.get('birth_date') else datetime.date(1990,1,1)
-            cat = d.get('category') if d.get('category') else "未分類"
+            cat = d.get('category', "未分類")
             data.append({"id": d['id'], "name": d['name'], "english_name": d.get('english_name', ""), "birthdate": bd, "type": "friend", "category": cat})
         return data
     except: return []
+
 
 def _save_chart(username, name, eng, bd, category, uid=None, is_me=False):
     if not supabase: 
@@ -97,29 +101,28 @@ def _save_chart(username, name, eng, bd, category, uid=None, is_me=False):
         }
 
         if is_me:
-            # 更新本人
+            # 更新本人：以 line_user_id 為 Unique Key 進行 upsert
             supabase.table("users").upsert({
-                "username": username, 
+                "line_user_id": line_id, 
                 "full_name": name, 
                 "english_name": final_eng, 
                 "birth_date": bd_str
-            }, on_conflict="username").execute()
-            st.toast("✅ 本人資料已更新")
-        
+            }, on_conflict="line_user_id").execute()
         else:
-            # 更新/新增 親友
+            data_payload = {
+                "user_id": line_id, # 💡 存入永久 ID: joe1369
+                "name": name, 
+                "english_name": final_eng, 
+                "birth_date": bd_str, 
+                "category": category or "未分類"
+            }
             if uid:
                 supabase.table("saved_charts").update(data_payload).eq("id", uid).execute()
-                st.toast("✅ 親友資料已更新")
             else:
-                response = supabase.table("saved_charts").insert(data_payload).execute()
-                if response.data:
-                    st.toast("🎉 親友新增成功！")
-                else:
-                    st.warning("⚠️ 新增指令已送出，但沒有回傳確認，請刷新檢查。")
-
+                supabase.table("saved_charts").insert(data_payload).execute()
+        st.toast("✅ 能量存檔成功")
     except Exception as e:
-        st.error(f"💀 存檔失敗，錯誤原因：{str(e)}")
+        st.error(f"💀 存檔失敗: {e}")
         print(f"DEBUG ERROR: {e}")
 
 def _delete_chart(chart_id):
@@ -211,19 +214,24 @@ def _render_chart_details_section(target, username, all_existing_categories):
 
 # --- 主渲染入口 ---
 def render():
-    username = st.session_state.username
+    # 💡 獲取雙軌身分標籤
+    line_id = st.session_state.get("line_user_id")
+    username = st.session_state.get("username", "導航員") # 僅供視覺與權限邏輯顯示
+    
+    if not line_id:
+        st.warning("請先透過 LINE 登入")
+        return
     
     # === [新增] 1. 權限檢查邏輯 ===
     # 從資料庫抓取該用戶的 role (身分)
-    user_role = "registered" # 預設值
+    user_role = "registered"
     if supabase:
         try:
-            # 查詢 users 表格
-            u_res = supabase.table("users").select("role").eq("username", username).execute()
+            # 💡 查詢身分改用 ID
+            u_res = supabase.table("users").select("role").eq("line_user_id", line_id).execute()
             if u_res.data:
                 user_role = u_res.data[0].get("role", "registered")
-        except:
-            pass # 查詢失敗就當作一般會員
+        except: pass
     
     # 取得該等級的詳細權限設定 (讀取剛剛寫的 config)
     tier_config = get_user_tier(user_role)
