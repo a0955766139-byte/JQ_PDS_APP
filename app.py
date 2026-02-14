@@ -186,22 +186,17 @@ if __name__ == "__main__":
             line_name = user_data["name"] # 顯示姓名: 喬鈞老師
 
             # 1. 寫入/更新用戶表，確保 line_user_id 存在
-            if supabase:
+        if supabase:
+            try:
                 supabase.table("users").upsert({
-                    "line_user_id": line_id,
-                    "username": line_name,
+                    "line_user_id": line_id,      # joe1369
+                    "username": line_name,         # 喬鈞老師
                     "last_login": datetime.datetime.now().isoformat()
                 }, on_conflict="line_user_id").execute()
-
-            # 2. 設定 Session 狀態
-            st.session_state.line_user_id = line_id
-            st.session_state.username = line_name
-            st.session_state.logged_in = True
-            
-            # 3. 持久化與清理
-            _persist_login(line_id) 
-            st.query_params.clear()
-            st.rerun()
+            except Exception as e:
+                print(f"⚠️ 用戶表同步提醒: {e}")
+            else:
+                print(f"⚠️ 用戶表同步提醒: {e}")
 
     if not st.session_state.logged_in:
         _try_restore_login()

@@ -53,10 +53,10 @@ def render_home_ads():
             st.markdown("#### 🎓 喬鈞心學研究院")
             st.caption("探索心靈深度，掌握生命藍圖")
             # 使用 Link Button 避免 Key 衝突
-            st.link_button("進入研究院", "https://your-academy-link.com", width="stretch")
+            st.link_button("進入研究院", "https://youtube.com/@chun38112?si=qxPme_2qX4jwka0U", width="stretch")
             
     with c2:
         with st.container(border=True):
             st.markdown("#### 📚 九能量新書問卷")
             st.caption("您的寶貴意見，是新書最美的能量")
-            st.link_button("填寫問卷", "https://your-survey-link.com", width="stretch")
+            st.link_button("填寫問卷", "https://forms.gle/6RwKEG2Kj24SVeyK9", width="stretch")
