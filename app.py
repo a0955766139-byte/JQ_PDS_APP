@@ -181,22 +181,38 @@ if __name__ == "__main__":
     if "code" in st.query_params and not st.session_state.logged_in:
         code = st.query_params["code"]
         user_data, err = get_line_profile_name(code)
+        
+        # 💡 修正 A：先清理 URL 參數，切斷死迴圈連結
+        st.query_params.clear() 
+        
         if user_data:
-            line_id = user_data["id"] # 真實 ID: joe1369
+            line_id = user_data["id"]     # 真實 ID: joe1369
             line_name = user_data["name"] # 顯示姓名: 喬鈞老師
 
-            # 1. 寫入/更新用戶表，確保 line_user_id 存在
-        if supabase:
-            try:
-                supabase.table("users").upsert({
-                    "line_user_id": line_id,      # joe1369
-                    "username": line_name,         # 喬鈞老師
-                    "last_login": datetime.datetime.now().isoformat()
-                }, on_conflict="line_user_id").execute()
-            except Exception as e:
-                print(f"⚠️ 用戶表同步提醒: {e}")
-            else:
-                print(f"⚠️ 用戶表同步提醒: {e}")
+            # 💡 修正 B：執行資料庫同步 (防禦性寫法)
+            if supabase:
+                try:
+                    supabase.table("users").upsert({
+                        "line_user_id": line_id,
+                        "username": line_name,
+                        "last_login": datetime.datetime.now().isoformat()
+                    }, on_conflict="line_user_id").execute()
+                except Exception as e:
+                    # 如果資料庫欄位缺失會報錯，但我們不讓它卡死登入流程
+                    st.warning(f"⚠️ 帳號同步延遲 (請確認資料庫欄位): {e}")
+
+            # 💡 修正 C：正確設定 Session 狀態並執行轉場
+            st.session_state.line_user_id = line_id
+            st.session_state.username = line_name
+            st.session_state.logged_in = True
+            
+            # 持久化登入 (存入 p_user=joe1369)
+            _persist_login(line_id) 
+            
+            # 成功後重啟頁面，進入主介面
+            st.rerun()
+        else:
+            st.error(f"LINE 登入失敗：{err}")
 
     if not st.session_state.logged_in:
         _try_restore_login()
