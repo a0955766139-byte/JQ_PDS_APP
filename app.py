@@ -48,27 +48,37 @@ ads_manager = safe_import("ads_manager")
 # 3. 持久化登入與資料庫工具
 #==========================================
 def _persist_login(user_id):
-    # 💡 關鍵：這裡改存 line_user_id (字串)，防止字典型態錯誤
-    st.query_params["p_user"] = str(user_id)
+    # 💡 改為使用 Streamlit 提供的實驗 API 更新查詢參數
+    params = {k: v for k, v in st.query_params.items()}
+    params["p_user"] = str(user_id)
+    st.experimental_set_query_params(**params)
 
 def _clear_persist_login():
     if "p_user" in st.query_params:
         del st.query_params["p_user"]
 
 def _try_restore_login():
-    p_user_id = st.query_params.get("p_user") # 這裡拿到的是 joe1369
+    p_user_id = st.query_params.get("p_user") 
     if p_user_id and not st.session_state.get("logged_in"):
-        # 從資料庫抓取最新的顯示姓名
         try:
-            res = supabase.table("users").select("username").eq("line_user_id", p_user_id).execute()
-            name = res.data[0]['username'] if res.data else "能量導航員"
-        except:
-            name = "能量導航員"
-
-        st.session_state.logged_in = True
-        st.session_state.line_user_id = p_user_id 
-        st.session_state.username = name 
-        return True
+            # 💡 修改：精準抓取所有 Profile 資料
+            res = supabase.table("users").select("*").eq("line_user_id", p_user_id).execute()
+            
+            if res.data:
+                user_profile = res.data[0]
+                st.session_state.logged_in = True
+                st.session_state.line_user_id = p_user_id 
+                # 💡 防止名字為 NULL 導致崩潰
+                st.session_state.username = user_profile.get('username') or "能量導航員"
+                st.session_state.user_profile = user_profile
+                return True
+            else:
+                # 如果查無此人，清除網址參數防止死循環
+                _clear_persist_login()
+                return False
+        except Exception as e:
+            print(f"登入還原失敗: {e}")
+            return False
     return False
 
 @st.cache_resource
@@ -176,6 +186,9 @@ if __name__ == "__main__":
     if "logged_in" not in st.session_state: st.session_state.logged_in = False
     if "username" not in st.session_state: st.session_state.username = ""
     if "user_profile" not in st.session_state: st.session_state.user_profile = None
+    
+    # 當頁面重新整理或帶著 p_user 時嘗試還原登入狀態
+    _try_restore_login()
     
     # LINE 回調處理
     if "code" in st.query_params and not st.session_state.logged_in:
