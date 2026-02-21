@@ -213,10 +213,9 @@ def render_card_ui(card_data, is_new=False):
     </div>
     """, unsafe_allow_html=True)
 
-def render_divination_view():
+def render_divination_view(friends_raw=None):
     inject_custom_css()
     
-    # 💡 雙軌身分對位
     line_id = st.session_state.get("line_user_id")
     display_name = st.session_state.get("username", "導航員")
     
