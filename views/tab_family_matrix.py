@@ -240,8 +240,8 @@ def render(friends_raw=None):
                 
                 c_save, c_del = st.columns([1, 1])
                 with c_save:
-                    if st.button("✅ 儲存變更", type="primary", use_container_width=True):
-                        _save_chart(username, e_name, e_eng, e_bd, uid=(None if target['type']=='me' else target['id']), is_me=(target['type']=='me'))
+                if st.button("✅ 儲存變更", type="primary", use_container_width=True):
+                        _save_chart(line_id, e_name, e_eng, e_bd, uid=(None if target['type']=='me' else target['id']), is_me=(target['type']=='me'))
                         st.session_state[edit_key] = False
                         st.toast("資料已更新！")
                         time.sleep(1)
