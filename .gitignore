@@ -18,4 +18,5 @@ venv/
 
 # 5.忽略本地資料庫檔案
 *.db
-*.sqlite3
+*.sqlite3.streamlit/secrets.toml
+.venv/
