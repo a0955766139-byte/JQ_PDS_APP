@@ -23,7 +23,7 @@ def init_connection():
 supabase = init_connection()
 
 # 🛠️ 修正 1：更新邏輯改用 line_user_id 鎖定
-def update_profile(line_user_id, full_name, eng_name, birth_date):
+def update_profile(line_user_id, full_name, eng_name, birth_date, email=None, phone=None):
     if not supabase: return False
     try:
         data = {
@@ -33,6 +33,10 @@ def update_profile(line_user_id, full_name, eng_name, birth_date):
             "birth_date": birth_date.isoformat(),
             "last_updated": datetime.datetime.now().isoformat()
         }
+        if email is not None:
+            data["email"] = email
+        if phone is not None:
+            data["phone"] = phone
         # 💡 關鍵：使用永久不變的 ID 作為過濾條件
         supabase.table("users").update(data).eq("line_user_id", line_user_id).execute()
         return True
@@ -81,6 +85,8 @@ def render():
             # 這裡顯示 LINE 抓到的名字作為預設
             new_name = st.text_input("顯示暱稱", value=user.get('full_name', display_name))
             new_eng = st.text_input("英文名 (用於性情計算)", value=user.get('english_name', ''))
+            new_email = st.text_input("Gmail 信箱 (綁定通知)", value=user.get('email', ''))
+            new_phone = st.text_input("聯絡電話", value=user.get('phone', ''))
             
             # 處理日期
             bd_val = user.get('birth_date')
@@ -95,12 +101,14 @@ def render():
             
             if st.form_submit_button("💾 保存並同步 ID 能量"):
                 # 💡 關鍵：傳入 joe1369 進行物理存檔
-                if update_profile(line_id, new_name, new_eng, new_bd):
+                if update_profile(line_id, new_name, new_eng, new_bd, email=new_email, phone=new_phone):
                     st.toast("✅ 資料已與 LINE ID 成功對位！", icon="🎉")
                     # 更新 Session 避免重複抓取
                     st.session_state.user_profile['full_name'] = new_name
                     st.session_state.user_profile['english_name'] = new_eng
                     st.session_state.user_profile['birth_date'] = new_bd.isoformat()
+                    st.session_state.user_profile['email'] = new_email
+                    st.session_state.user_profile['phone'] = new_phone
                     time.sleep(1)
                     st.rerun()
 
