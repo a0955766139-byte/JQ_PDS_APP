@@ -236,11 +236,16 @@ def render(friends_raw=None):
             with st.container(border=True):
                 e_name = st.text_input("姓名", value=target['name'])
                 e_eng = st.text_input("英文名", value=target['english_name'])
-                e_bd = st.date_input("出生日期", value=target['birthdate'])
+                e_bd = st.date_input(
+                    "出生日期",
+                    value=target['birthdate'],
+                    min_value=datetime.date(1900, 1, 1),
+                    max_value=datetime.date(2026, 12, 31)
+                )
                 
                 c_save, c_del = st.columns([1, 1])
                 with c_save:
-                if st.button("✅ 儲存變更", type="primary", use_container_width=True):
+                    if st.button("✅ 儲存變更", type="primary", use_container_width=True):
                         _save_chart(line_id, e_name, e_eng, e_bd, uid=(None if target['type']=='me' else target['id']), is_me=(target['type']=='me'))
                         st.session_state[edit_key] = False
                         st.toast("資料已更新！")
