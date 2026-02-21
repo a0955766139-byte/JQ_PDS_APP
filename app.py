@@ -44,6 +44,14 @@ tab_member = safe_import("tab_member")
 auth_ui = safe_import("auth_ui")
 ads_manager = safe_import("ads_manager")
 
+
+def get_secret_value(section: str, key: str, default=None):
+    env_key = f"{section}_{key}".upper()
+    value = os.environ.get(env_key)
+    if value:
+        return value
+    return st.secrets.get(section, {}).get(key, default)
+
 #==========================================
 # 3. 持久化登入與資料庫工具
 #==========================================
@@ -84,28 +92,21 @@ def _try_restore_login():
 
 @st.cache_resource
 def init_connection():
-    url = os.environ.get("SUPABASE_URL") or st.secrets.get("supabase", {}).get("url")
-    key = os.environ.get("SUPABASE_KEY") or st.secrets.get("supabase", {}).get("key")
-    if url and key: return create_client(url, key)
+    url = get_secret_value("supabase", "url")
+    key = get_secret_value("supabase", "key")
+    if url and key:
+        return create_client(url, key)
     return None
 
 supabase = init_connection()
 
 # LINE 登入相關函式 (保持您的內容不變...)
 def get_line_auth_url():
-    try:
-        # 💡 修正：直接對齊您的 secrets.toml
-        line_secrets = st.secrets["line"]
-        cid = line_secrets["channel_id"]     
-        redir = line_secrets["redirect_uri"] 
-    except Exception:
-        st.error("⚠️ 讀取 secrets.toml 失敗，請檢查格式")
-        return None
-    
+    cid = get_secret_value("line", "channel_id")
+    redir = get_secret_value("line", "redirect_uri")
     if not cid or not redir:
         st.error(f"⚠️ 系統配置缺失：CID={bool(cid)}, REDIR={bool(redir)}")
         return None
-        
     return f"https://access.line.me/oauth2/v2.1/authorize?response_type=code&client_id={cid}&redirect_uri={redir}&state=pds&scope=profile%20openid%20email"
 
 def get_line_profile_name(code):
@@ -114,13 +115,12 @@ def get_line_profile_name(code):
         # 1. 向 LINE 請求 Access Token
         token_url = "https://api.line.me/oauth2/v2.1/token"
         headers = {"Content-Type": "application/x-www-form-urlencoded"}
-        # 💡 修正後：直接從 st.secrets 抓取 LINE 的金鑰
         data = {
             "grant_type": "authorization_code",
             "code": code,
-            "redirect_uri": st.secrets["line"]["redirect_uri"],
-            "client_id": st.secrets["line"]["channel_id"],
-            "client_secret": st.secrets["line"]["channel_secret"]
+            "redirect_uri": get_secret_value("line", "redirect_uri"),
+            "client_id": get_secret_value("line", "channel_id"),
+            "client_secret": get_secret_value("line", "channel_secret")
         }
         res = requests.post(token_url, headers=headers, data=data).json()
         
