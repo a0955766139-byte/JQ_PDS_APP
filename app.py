@@ -142,6 +142,23 @@ def get_line_profile_name(code):
     except Exception as e:
         return None, str(e)
 
+def sync_legacy_records(line_id, display_name):
+    """登入時自動把舊 username 的紀錄補上 line_user_id"""
+    if not supabase: return
+    try:
+        supabase.table("users") \
+            .update({"line_user_id": line_id}) \
+            .eq("username", display_name) \
+            .is_("line_user_id", None) \
+            .execute()
+        supabase.table("saved_charts") \
+            .update({"line_user_id": line_id}) \
+            .eq("username", display_name) \
+            .is_("line_user_id", None) \
+            .execute()
+    except Exception:
+        pass
+
 #==========================================
 # 4. 主程式介面 (合併後的 show_member_app)
 #==========================================
@@ -230,6 +247,8 @@ if __name__ == "__main__":
                 except Exception as e:
                     # 如果資料庫欄位缺失會報錯，但我們不讓它卡死登入流程
                     st.warning(f"⚠️ 帳號同步延遲 (請確認資料庫欄位): {e}")
+                finally:
+                    sync_legacy_records(line_id, line_name)
 
             # 💡 修正 C：正確設定 Session 狀態並執行轉場
             st.session_state.line_user_id = line_id
