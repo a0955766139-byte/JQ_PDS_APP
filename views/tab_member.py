@@ -86,7 +86,12 @@ def render():
             bd_val = user.get('birth_date')
             if isinstance(bd_val, str):
                 bd_val = datetime.datetime.strptime(bd_val, "%Y-%m-%d").date()
-            new_bd = st.date_input("出生日期", value=bd_val if bd_val else datetime.date(1990,9,8))
+            new_bd = st.date_input(
+                "出生日期",
+                value=bd_val if bd_val else datetime.date(2000,01,01),
+                min_value=datetime.date(1800, 1, 1),
+                max_value=datetime.date(2050, 12, 31),
+            )
             
             if st.form_submit_button("💾 保存並同步 ID 能量"):
                 # 💡 關鍵：傳入 joe1369 進行物理存檔
