@@ -60,8 +60,9 @@ def render():
         return
 
     # 💡 修正 2：優先讀取資料庫存好的 username
-    user = st.session_state.get('user_profile', {})
+    user = st.session_state.get('user_profile') or {}
     username = user.get("username") or st.session_state.get("username", "未知用戶")
+    role = user.get("role", "user")
     # 動態計算當前權限等級
     tier_info = get_user_tier(display_name) 
 
@@ -70,8 +71,8 @@ def render():
     with col1:
         # 顯示視覺上的尊榮標籤
         st.info(f"當前身分：{display_name}")
-        st.success(f"權限：{tier_info['label']}")
-        if role == 'admin':
+    st.success(f"權限：{tier_info.get('name', '會員')}")
+    if role == 'admin':
             st.warning("🛡️ 管理員模式已開啟")
     
     with col2:
