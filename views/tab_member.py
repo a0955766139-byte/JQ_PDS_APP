@@ -27,6 +27,7 @@ def update_profile(line_user_id, full_name, eng_name, birth_date):
     if not supabase: return False
     try:
         data = {
+            "username": full_name, # 同步更新顯示姓名
             "full_name": full_name,
             "english_name": eng_name,
             "birth_date": birth_date.isoformat(),
@@ -58,10 +59,9 @@ def render():
         st.warning("⚠️ 請先透過 LINE 快速登入以啟動會員功能")
         return
 
-    # 獲取緩存的 Profile 資料
+    # 💡 修正 2：優先讀取資料庫存好的 username
     user = st.session_state.get('user_profile', {})
-    role = user.get('role', 'user')
-    
+    username = user.get("username") or st.session_state.get("username", "未知用戶")
     # 動態計算當前權限等級
     tier_info = get_user_tier(display_name) 
 
@@ -116,3 +116,21 @@ def render():
                 use_container_width=True
             )
             st.metric("總註冊靈魂數", len(all_users))
+
+# --- tab_member.py 優化 ---
+
+def show_member_center():
+    profile = st.session_state.get("user_profile", {})
+    
+    st.info("### 👤 個人檔案設定")
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        # 顯示資料庫中的 username
+        st.write(f"**🌟 顯示姓名：** {profile.get('username')}")
+        st.write(f"**📧 電子郵件：** {profile.get('email', '未設定')}")
+        
+    with col2:
+        # 顯示您的唯一靈魂門牌
+        st.write(f"**🆔 系統 ID：** `{profile.get('line_user_id')}`")
+        st.write(f"**👑 會員等級：** {profile.get('role', 'user').upper()}")

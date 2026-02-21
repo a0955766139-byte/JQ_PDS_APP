@@ -3,58 +3,34 @@ import datetime
 import os
 import time
 from supabase import create_client
-from pypinyin import pinyin, Style  # 引入拼音套件
+from pypinyin import pinyin, Style
 from views.permission_config import get_user_tier
-# 引入 UI 模組
 from views import life_map_ui
 
-# --- 資料庫連線 ---
+# --- 1. 資料庫與輔助函式 ---
 @st.cache_resource
 def init_connection():
-    url = os.environ.get("SUPABASE_URL")
-    key = os.environ.get("SUPABASE_KEY")
-    if not url or not key:
-        try:
-            url = st.secrets["supabase"]["url"]
-            key = st.secrets["supabase"]["key"]
-        except: pass
-    if url and key: return create_client(url, key)
-    return None
+    url = os.environ.get("SUPABASE_URL") or st.secrets.get("supabase", {}).get("url")
+    key = os.environ.get("SUPABASE_KEY") or st.secrets.get("supabase", {}).get("key")
+    return create_client(url, key) if url and key else None
 
 supabase = init_connection()
 
-# --- 輔助函式：自動生成威妥碼拼音 ---
 def _auto_generate_english_name(chinese_name):
-    """
-    將中文姓名轉換為威妥碼拼音 (Wade-Giles)
-    例如：游喬鈞 -> Yu Chiao Chun
-    """
     if not chinese_name: return ""
     try:
-        # 使用 pypinyin 套件進行轉換
-        # heteronym=False: 不啟用多音字模式，避免回傳太多選項
-        # style=Style.WADEGILES: 指定威妥碼拼音
         pinyin_list = pinyin(chinese_name, style=Style.WADEGILES, heteronym=False)
-        
-        # 處理結果：將 list of lists 轉為字串
-        # pinyin 回傳格式為 [['yu'], ['chiao'], ['chun']]
-        # 我們將其轉換為 "Yu Chiao Chun" (首字母大寫)
-        english_parts = [item[0].capitalize() for item in pinyin_list]
-        return " ".join(english_parts)
-    except Exception as e:
-        print(f"Translation Error: {e}")
-        return ""
+        return " ".join([item[0].capitalize() for item in pinyin_list])
+    except: return ""
 
-# --- 資料存取函式 ---
-def _get_my_profile(line_user_id): # 💡 參數名稱建議改為 line_user_id
+# --- 2. 資料存取函式 (核心：對準 line_user_id) ---
+def _get_my_profile(line_user_id): # ✅ 統一使用 line_user_id
     if not supabase: return None
     try:
-        # 💡 修正：使用 line_user_id 查詢本人資料
         res = supabase.table("users").select("*").eq("line_user_id", line_user_id).execute()
         if res.data:
             d = res.data[0]
-            bd = datetime.datetime.strptime(d['birth_date'], "%Y-%m-%d").date() if d.get('birth_date') else datetime.date(1990,1,1)
-            # 💡 姓名僅供顯示使用
+            bd = datetime.datetime.strptime(d['birth_date'], "%Y-%m-%d").date() if d.get('birth_date') else datetime.date(1983,9,8)
             return {"id": "ME", "name": d.get('full_name', "本人"), "english_name": d.get('english_name', ""), "birthdate": bd, "type": "me", "category": "本人"}
         return None
     except: return None
@@ -62,269 +38,74 @@ def _get_my_profile(line_user_id): # 💡 參數名稱建議改為 line_user_id
 def _get_saved_charts(line_user_id):
     if not supabase: return []
     try:
-        # 💡 修正：使用 line_user_id 抓取那 22 筆親友檔案
-        res = supabase.table("saved_charts").select("*").eq("user_id", line_user_id).order("created_at", desc=True).execute()
+        res = supabase.table("saved_charts").select("*").eq("line_user_id", line_user_id).order("created_at", desc=True).execute()
         data = []
         for d in res.data:
             bd = datetime.datetime.strptime(d['birth_date'], "%Y-%m-%d").date() if d.get('birth_date') else datetime.date(1990,1,1)
-            cat = d.get('category', "未分類")
-            data.append({"id": d['id'], "name": d['name'], "english_name": d.get('english_name', ""), "birthdate": bd, "type": "friend", "category": cat})
+            data.append({"id": d['id'], "name": d['name'], "english_name": d.get('english_name', ""), "birthdate": bd, "type": "friend", "category": d.get('category', "未分類")})
         return data
     except: return []
 
-
-def _save_chart(username, name, eng, bd, category, uid=None, is_me=False):
-    if not supabase: 
-        st.error("❌ 資料庫未連線")
-        return
-
+def _save_chart(line_user_id, name, eng, bd, category, uid=None, is_me=False):
+    if not supabase: return
     try:
         bd_str = bd.isoformat()
-        final_category = category if category else "未分類"
-
-        # --- [關鍵功能] 自動補全英文名 ---
-        # 如果使用者沒有輸入英文名 (eng 為空字串或 None)，則自動翻譯
-        final_eng = eng
-        if not final_eng or not final_eng.strip():
-            final_eng = _auto_generate_english_name(name)
-            # 可以在這裡加一個提示，告訴用戶系統幫他做了什麼
-            if final_eng:
-                st.toast(f"🪄 已自動為您生成英文名：{final_eng}")
-        # --------------------------------
-
-        data_payload = {
-            "user_id": username, 
-            "name": name, 
-            "english_name": final_eng, 
-            "birth_date": bd_str, 
-            "category": final_category
-        }
-
+        final_eng = eng if eng and eng.strip() else _auto_generate_english_name(name)
         if is_me:
-            # 更新本人：以 line_user_id 為 Unique Key 進行 upsert
-            supabase.table("users").upsert({
-                "line_user_id": line_id, 
-                "full_name": name, 
-                "english_name": final_eng, 
-                "birth_date": bd_str
-            }, on_conflict="line_user_id").execute()
+            # ✅ 修正：這裡要用參數傳進來的 line_user_id
+            supabase.table("users").upsert({"line_user_id": line_user_id, "full_name": name, "english_name": final_eng, "birth_date": bd_str}, on_conflict="line_user_id").execute()
         else:
-            data_payload = {
-                "user_id": line_id, # 💡 存入永久 ID: joe1369
-                "name": name, 
-                "english_name": final_eng, 
-                "birth_date": bd_str, 
-                "category": category or "未分類"
-            }
-            if uid:
-                supabase.table("saved_charts").update(data_payload).eq("id", uid).execute()
-            else:
-                supabase.table("saved_charts").insert(data_payload).execute()
+            data_payload = {"line_user_id": line_user_id, "name": name, "english_name": final_eng, "birth_date": bd_str, "category": category or "未分類"}
+            if uid: supabase.table("saved_charts").update(data_payload).eq("id", uid).execute()
+            else: supabase.table("saved_charts").insert(data_payload).execute()
         st.toast("✅ 能量存檔成功")
-    except Exception as e:
-        st.error(f"💀 存檔失敗: {e}")
-        print(f"DEBUG ERROR: {e}")
+    except Exception as e: st.error(f"💀 存檔失敗: {e}")
 
-def _delete_chart(chart_id):
-    if not supabase: return
-    try: supabase.table("saved_charts").delete().eq("id", chart_id).execute()
-    except: pass
-
-# --- 詳細資料區塊 (包含編輯功能) ---
-def _render_chart_details_section(target, username, all_existing_categories):
-    # 狀態管理：編輯模式
-    edit_key = f"edit_mode_{target['id']}"
-    if edit_key not in st.session_state: st.session_state[edit_key] = False
-    is_editing = st.session_state[edit_key]
-
-    # --- [關鍵修改] 標題區：加入英文名字顯示 ---
-    c_title, c_btn = st.columns([4, 1])
-    with c_title: 
-        # 準備英文名字字串 (灰色小字)
-        eng_display = ""
-        if target.get('english_name'):
-            eng_display = f" <span style='font-size:0.7em; color:#666; font-weight:normal'>({target['english_name']})</span>"
-            
-        # 渲染標題 (需開啟 unsafe_allow_html 才能吃 HTML 語法)
-        st.markdown(f"#### 🧬 {target['name']}{eng_display} 的能量導航", unsafe_allow_html=True)
-    # -----------------------------------------
-
-    with c_btn:
-        if is_editing:
-            if st.button("取消", key=f"life_cancel_{target['id']}"):
-                st.session_state[edit_key] = False
-                st.rerun()
-        else:
-            if st.button("📝 編輯", key=f"life_edit_{target['id']}"):
-                st.session_state[edit_key] = True
-                st.rerun()
-
-    # 編輯模式：顯示表單
-    if is_editing:
-        with st.container(border=True):
-            with st.form(key=f"life_edit_form_{target['id']}"):
-                e_name = st.text_input("姓名", value=target['name'])
-                
-                # 提示用戶可以留空
-                e_eng = st.text_input(
-                    "英文名 (可留空，系統將自動翻譯)", 
-                    value=target['english_name'],
-                    placeholder="例如: Yu Chiao Chun"
-                )
-                
-                e_bd = st.date_input(
-                    "出生日期", 
-                    value=target['birthdate'], 
-                    min_value=datetime.date(1900, 1, 1),
-                    max_value=datetime.date.today()
-                )
-                
-                st.caption("設定關係分類")
-                c_cat_sel, c_cat_new = st.columns([1, 1])
-                
-                current_cat = target.get('category', '未分類')
-                base_options = sorted(list(set(["家人", "朋友", "同事", "客戶", "未分類"] + all_existing_categories)))
-                
-                if current_cat not in base_options: base_options.insert(0, current_cat)
-                try: cat_index = base_options.index(current_cat)
-                except: cat_index = 0
-
-                with c_cat_sel:
-                    sel_cat = st.selectbox("選擇現有分類", base_options, index=cat_index)
-                with c_cat_new:
-                    new_cat_input = st.text_input("或建立新分類", placeholder="輸入名稱 (如: 球友)")
-
-                if st.form_submit_button("✅ 儲存變更", type="primary", use_container_width=True):
-                    final_cat = new_cat_input.strip() if new_cat_input.strip() else sel_cat
-                    _save_chart(username, e_name, e_eng, e_bd, final_cat, uid=(None if target['type']=='me' else target['id']), is_me=(target['type']=='me'))
-                    st.session_state[edit_key] = False
-                    time.sleep(1)
-                    st.rerun()
-
-            if target['type'] == 'friend':
-                if st.button("🗑️ 刪除此人", type="secondary", use_container_width=True, key=f"del_{target['id']}"):
-                    _delete_chart(target['id'])
-                    st.session_state.selected_profile_id = "ME"
-                    st.rerun()
-        
-        life_map_ui.render_energy_tabs(target['birthdate'], target['english_name'])
-        
-    else:
-        life_map_ui.render_energy_tabs(target['birthdate'], target['english_name'])
-
-# --- 主渲染入口 ---
-def render():
-    # 💡 獲取雙軌身分標籤
+# --- 3. 主渲染入口 ---
+def render(friends_raw=None): # ✅ 必須接收這個參數
     line_id = st.session_state.get("line_user_id")
-    username = st.session_state.get("username", "導航員") # 僅供視覺與權限邏輯顯示
-    
     if not line_id:
         st.warning("請先透過 LINE 登入")
         return
     
-    # === [新增] 1. 權限檢查邏輯 ===
-    # 從資料庫抓取該用戶的 role (身分)
-    user_role = "registered"
-    if supabase:
-        try:
-            # 💡 查詢身分改用 ID
-            u_res = supabase.table("users").select("role").eq("line_user_id", line_id).execute()
-            if u_res.data:
-                user_role = u_res.data[0].get("role", "registered")
-        except: pass
-    
-    # 取得該等級的詳細權限設定 (讀取剛剛寫的 config)
+    user_profile = st.session_state.get("user_profile") or {}
+    user_role = user_profile.get("role", "registered")
     tier_config = get_user_tier(user_role)
-    limit_count = tier_config["map_limit"]
-    # ============================
-
-    # 準備資料
+    
     all_profiles = []
-    me = _get_my_profile(username)
+    me = _get_my_profile(line_id)
     if me: all_profiles.append(me)
-    else: all_profiles.append({"id": "ME", "name": username, "english_name": "", "birthdate": datetime.date(1990,1,1), "type": "me", "category": "本人"})
     
-    friends = _get_saved_charts(username)
-    all_profiles.extend(friends)
+    # 💡 數據顯化邏輯
+    friends_list = friends_raw if friends_raw is not None else _get_saved_charts(line_id)
+    processed_friends = []
+    for d in friends_list:
+        bd = datetime.datetime.strptime(d['birth_date'], "%Y-%m-%d").date() if d.get('birth_date') else datetime.date(1990,1,1)
+        processed_friends.append({"id": d.get('id'), "name": d.get('name'), "english_name": d.get('english_name', ""), "birthdate": bd, "type": "friend", "category": d.get('category', "未分類")})
     
-    # 計算目前已用額度 (不含本人)
-    current_used = len(friends)
+    all_profiles.extend(processed_friends)
+    current_used = len(processed_friends)
 
-    existing_cats = list(set([p.get('category', '未分類') for p in friends]))
-
-    # --- 上半部：詳細資料 ---
+    # 渲染目前選中的檔案
     if "selected_profile_id" not in st.session_state: st.session_state.selected_profile_id = "ME"
-    target = next((x for x in all_profiles if x['id'] == st.session_state.selected_profile_id), None)
-    if not target and all_profiles:
-        target = all_profiles[0]
-        st.session_state.selected_profile_id = target['id']
+    target = next((x for x in all_profiles if x['id'] == st.session_state.selected_profile_id), all_profiles[0])
+    
     if target:
-        _render_chart_details_section(target, username, existing_cats)
-    
+        # 直接呼叫 UI 模組顯示 1983-09-08 等能量圖
+        life_map_ui.render_energy_tabs(target['birthdate'], target['english_name'])
+
     st.divider()
-
-    # --- 下半部：家族矩陣列表 (含額度顯示) ---
     st.markdown(f"### 👨‍👩‍👧‍👦 家族矩陣：親友檔案庫")
-    
-    # === [新增] 額度進度條 ===
-    st.caption(f"目前等級：{tier_config['name']} | 額度使用：{current_used} / {limit_count} 位")
-    if limit_count > 0:
-        bar_val = min(current_used / limit_count, 1.0)
-        # 如果快滿了顯示紅色，否則顯示藍色 (Streamlit 預設)
-        st.progress(bar_val)
-    # ========================
+    st.caption(f"目前等級：{tier_config['name']} | 額度：{current_used} / {tier_config['map_limit']}")
 
-    # === [關鍵] 判斷是否鎖住新增功能 ===
-    if current_used >= limit_count:
-        # 額度已滿：顯示警告卡片，不顯示新增表單
-        st.warning(f"⚠️ 您的親友名單已達上限 ({limit_count}位)。")
-        st.info("💡 想要記錄更多親友？請升級會員方案解鎖更多名額！")
-    else:
-        # 額度未滿：正常顯示新增功能
-        with st.expander("➕ 新增親友資料", expanded=False):
+    if current_used < tier_config['map_limit']:
+        with st.expander("➕ 新增親友資料"):
             with st.form("life_map_add_form"):
-                c1, c2 = st.columns(2)
-                new_name = c1.text_input("姓名")
-                new_eng = c2.text_input("英文名 (留空則自動生成)", placeholder="系統將自動轉換為威妥碼拼音")
-                new_bd = st.date_input("出生日期", min_value=datetime.date(1900,1,1), max_value=datetime.date.today())
-                
-                st.caption("設定關係分類")
-                c_cat_1, c_cat_2 = st.columns([1, 1])
-                with c_cat_1:
-                    base_opts = sorted(list(set(["家人", "朋友", "同事", "客戶", "未分類"] + existing_cats)))
-                    sel_new_cat = st.selectbox("選擇現有分類", base_opts)
-                with c_cat_2:
-                    manual_new_cat = st.text_input("或建立新分類", placeholder="例如: 大學同學")
-                
-                if st.form_submit_button("建立檔案", type="primary"):
-                    final_new_cat = manual_new_cat.strip() if manual_new_cat.strip() else sel_new_cat
-                    _save_chart(username, new_name, new_eng, new_bd, final_new_cat, is_me=False)
-                    st.toast(f"已新增 {new_name} 到 {final_new_cat}！")
+                n_name = st.text_input("姓名")
+                n_eng = st.text_input("英文名 (留空自動生成)")
+                n_bd = st.date_input("出生日期", value=datetime.date(1990,1,1))
+                n_cat = st.selectbox("分類", ["家人", "朋友", "同事", "客戶", "未分類"])
+                if st.form_submit_button("建立檔案"):
+                    _save_chart(line_id, n_name, n_eng, n_bd, n_cat) # ✅ 使用 line_id 存檔
                     time.sleep(1)
                     st.rerun()
-
-    # 分類分頁渲染 (保持不變)
-    categories_map = {"全部": all_profiles}
-    for p in all_profiles:
-        cat = p.get('category', '未分類') or '未分類'
-        if cat not in categories_map: categories_map[cat] = []
-        categories_map[cat].append(p)
-    
-    fixed_order = ["全部", "本人", "家人", "朋友", "同事", "客戶"]
-    dynamic_keys = sorted([k for k in categories_map.keys() if k not in fixed_order])
-    final_tabs = [k for k in fixed_order if k in categories_map] + dynamic_keys
-    
-    tabs = st.tabs(final_tabs)
-    for i, tab_name in enumerate(final_tabs):
-        with tabs[i]:
-            profiles = categories_map[tab_name]
-            if not profiles: st.caption("此分類尚無資料")
-            else:
-                cols = st.columns(4)
-                for idx, p in enumerate(profiles):
-                    lpn = sum(int(d) for d in p['birthdate'].strftime("%Y%m%d"))
-                    while lpn > 9: lpn = sum(int(d) for d in str(lpn))
-                    btn_type = "primary" if st.session_state.selected_profile_id == p['id'] else "secondary"
-                    if cols[idx % 4].button(f"{p['name']}\n{lpn}號人", key=f"btn_{tab_name}_{p['id']}", use_container_width=True, type=btn_type):
-                        st.session_state.selected_profile_id = p['id']
-                        st.rerun()

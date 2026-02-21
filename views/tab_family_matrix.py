@@ -50,13 +50,6 @@ def _get_my_profile(username):
         return None
     except: return None
 
-def _get_saved_charts(username):
-    friends_raw = get_user_charts() # 這是您寫好的那個
-friends = []
-for d in friends_raw:
-    bd = datetime.datetime.strptime(d['birth_date'], "%Y-%m-%d").date() if d.get('birth_date') else datetime.date(1990,1,1)
-    friends.append({"id": d['id'], "name": d['name'], "english_name": d.get('english_name', ""), "birthdate": bd, "type": "friend"})
-
 # --- 資料存取函式 ---
 def get_user_charts():
     """核心：使用真實 ID (joe1369) 抓取資料庫 22 筆資料"""
@@ -147,7 +140,7 @@ def _draw_pyramid_svg(chart_data, bd):
     return svg
 
 # --- 主渲染邏輯 ---
-def render():
+def render(friends_raw=None):
     # 1. 💡 身分對位：後台用的門牌 (joe1369)
     line_id = st.session_state.get("line_user_id") 
     
@@ -157,8 +150,8 @@ def render():
     # 3. 顯示歡迎語
     st.markdown(f"### 👨‍👩‍👧‍👦 {display_name} 的家族矩陣") # 這裡顯示姓名
     
-    # 4. 抓取親友資料 (帶入 ID 進行查詢)
-    friends_raw = get_user_charts() 
+    # 4. 取得親友資料
+    friends_raw = friends_raw if friends_raw is not None else get_user_charts()
     
     st.markdown("### 👨‍👩‍👧‍👦 家族矩陣：親友檔案庫")
     
@@ -168,8 +161,6 @@ def render():
     # 取得自己 (模擬或從 users 表抓)
     all_profiles.append({"id": "ME", "name": display_name, "english_name": "", "birthdate": datetime.date(2000,1,1), "type": "me"})
 
-    # 💡 修正：直接呼叫新寫好的 ID 化函式
-    friends_raw = get_user_charts()
     for d in friends_raw:
         bd = datetime.datetime.strptime(d['birth_date'], "%Y-%m-%d").date() if d.get('birth_date') else datetime.date(2000,1,1)
         all_profiles.append({"id": d['id'], "name": d['name'], "english_name": d.get('english_name', ""), "birthdate": bd, "type": "friend"})

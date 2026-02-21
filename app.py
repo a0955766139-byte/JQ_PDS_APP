@@ -33,8 +33,8 @@ def safe_import(module_name):
             from views import auth_ui
             return auth_ui
     except Exception as e:
-        print(f"⚠️ {module_name} 載入提醒: {e}")
-        return None
+        st.error(f"❌ {module_name} 載入失敗: {e}")
+    return None
 
 tab_life_map = safe_import("tab_life_map")
 tab_divination = safe_import("tab_divination")
@@ -48,27 +48,38 @@ ads_manager = safe_import("ads_manager")
 # 3. 持久化登入與資料庫工具
 #==========================================
 def _persist_login(user_id):
-    # 💡 關鍵：這裡改存 line_user_id (字串)，防止字典型態錯誤
-    st.query_params["p_user"] = str(user_id)
+    # 💡 改為只使用 st.query_params：建立 copy 再 assign
+    params = dict(st.query_params)
+    params["p_user"] = str(user_id)
+    st.query_params = params
 
 def _clear_persist_login():
-    if "p_user" in st.query_params:
-        del st.query_params["p_user"]
+    params = dict(st.query_params)
+    params.pop("p_user", None)
+    st.query_params = params
 
 def _try_restore_login():
-    p_user_id = st.query_params.get("p_user") # 這裡拿到的是 joe1369
+    p_user_id = st.query_params.get("p_user") 
     if p_user_id and not st.session_state.get("logged_in"):
-        # 從資料庫抓取最新的顯示姓名
         try:
-            res = supabase.table("users").select("username").eq("line_user_id", p_user_id).execute()
-            name = res.data[0]['username'] if res.data else "能量導航員"
-        except:
-            name = "能量導航員"
-
-        st.session_state.logged_in = True
-        st.session_state.line_user_id = p_user_id 
-        st.session_state.username = name 
-        return True
+            # 💡 修改：精準抓取所有 Profile 資料
+            res = supabase.table("users").select("*").eq("line_user_id", p_user_id).execute()
+            
+            if res.data:
+                user_profile = res.data[0]
+                st.session_state.logged_in = True
+                st.session_state.line_user_id = p_user_id 
+                # 💡 防止名字為 NULL 導致崩潰
+                st.session_state.username = user_profile.get('username') or "能量導航員"
+                st.session_state.user_profile = user_profile
+                return True
+            else:
+                # 如果查無此人，清除網址參數防止死循環
+                _clear_persist_login()
+                return False
+        except Exception as e:
+            print(f"登入還原失敗: {e}")
+            return False
     return False
 
 @st.cache_resource
@@ -82,19 +93,20 @@ supabase = init_connection()
 
 # LINE 登入相關函式 (保持您的內容不變...)
 def get_line_auth_url():
-    # 1. 抓取 Channel ID
-    cid = os.environ.get("LINE_CHANNEL_ID")
+    try:
+        # 💡 修正：直接對齊您的 secrets.toml
+        line_secrets = st.secrets["line"]
+        cid = line_secrets["channel_id"]     
+        redir = line_secrets["redirect_uri"] 
+    except Exception:
+        st.error("⚠️ 讀取 secrets.toml 失敗，請檢查格式")
+        return None
     
-    # 2. 抓取 Redirect URI (移除硬編碼的舊網址，強制對齊環境變數)
-    redir = os.environ.get("LINE_REDIRECT_URI")
-    
-    # 防禦邏輯：如果變數沒設定，直接在介面顯示提醒
     if not cid or not redir:
         st.error(f"⚠️ 系統配置缺失：CID={bool(cid)}, REDIR={bool(redir)}")
         return None
         
     return f"https://access.line.me/oauth2/v2.1/authorize?response_type=code&client_id={cid}&redirect_uri={redir}&state=pds&scope=profile%20openid%20email"
-
 
 def get_line_profile_name(code):
     """真實 LINE API 對接：獲取唯一 User ID 與 顯示姓名"""
@@ -102,12 +114,13 @@ def get_line_profile_name(code):
         # 1. 向 LINE 請求 Access Token
         token_url = "https://api.line.me/oauth2/v2.1/token"
         headers = {"Content-Type": "application/x-www-form-urlencoded"}
+        # 💡 修正後：直接從 st.secrets 抓取 LINE 的金鑰
         data = {
             "grant_type": "authorization_code",
             "code": code,
-            "redirect_uri": os.environ.get("LINE_REDIRECT_URI"),
-            "client_id": os.environ.get("LINE_CHANNEL_ID"),
-            "client_secret": os.environ.get("LINE_CHANNEL_SECRET")
+            "redirect_uri": st.secrets["line"]["redirect_uri"],
+            "client_id": st.secrets["line"]["channel_id"],
+            "client_secret": st.secrets["line"]["channel_secret"]
         }
         res = requests.post(token_url, headers=headers, data=data).json()
         
@@ -133,7 +146,20 @@ def get_line_profile_name(code):
 # 4. 主程式介面 (合併後的 show_member_app)
 #==========================================
 def show_member_app():
-    # 側邊欄
+    # 💡 1. 關鍵救援：先從資料庫抓取所有「親友檔案」
+    # 使用新命名的 line_user_id 欄位
+    friends_raw = []
+    if supabase and "line_user_id" in st.session_state:
+        try:
+            res = supabase.table("saved_charts") \
+                .select("*") \
+                .eq("line_user_id", st.session_state.line_user_id) \
+                .execute()
+            friends_raw = res.data or []
+        except Exception as e:
+            st.error(f"⚠️ 無法讀取測算檔案：{e}")
+
+    # 側邊欄與登出邏輯 (保持不變)
     with st.sidebar:
         st.markdown(f"### 👤 {st.session_state.username}")
         if st.button("🚪 登出系統", use_container_width=True):
@@ -141,24 +167,25 @@ def show_member_app():
             st.session_state.clear()
             st.rerun()
 
-    # 安全提醒邏輯
-    if st.session_state.get("user", {}).get("email") == "persisted_user":
-        st.warning("⚠️ **帳號安全提醒：** 您目前僅使用 LINE 快速登入。請前往「會員中心」綁定 Email。")
+    # 安全提醒邏輯：引領用戶綁定 Gmail
+    user_profile = st.session_state.get("user_profile") or {}
+    if user_profile.get("role") == "registered":
+        st.warning("⚠️ **帳號安全提醒：** 建議前往「會員中心」確認您的聯繫資訊。")
 
     st.markdown(f"#### Hi, {st.session_state.username} | 九能量導航系統")
     tabs = st.tabs(["🏠 首頁", "🧬 人生地圖", "🔮 宇宙指引", "👨‍👩‍👧‍👦 家族矩陣", "📔 靈魂日記", "👤 會員中心"])
     
     with tabs[0]: 
         st.subheader(f"歡迎回到能量中心")
-        if ads_manager:
-            ads_manager.render_home_ads()
+        if ads_manager: ads_manager.render_home_ads()
             
+    # 💡 2. 關鍵救援：將 friends_raw 傳入各個分頁 (讓紅字消失)
     with tabs[1]: 
-        if tab_life_map: tab_life_map.render()
+        if tab_life_map: tab_life_map.render(friends_raw)
     with tabs[2]: 
-        if tab_divination: tab_divination.render_divination_view()
+        if tab_divination: tab_divination.render_divination_view(friends_raw)
     with tabs[3]: 
-        if tab_family_matrix: tab_family_matrix.render()
+        if tab_family_matrix: tab_family_matrix.render(friends_raw)
     with tabs[4]: 
         if tab_journal: tab_journal.render()
     with tabs[5]: 
@@ -177,29 +204,45 @@ if __name__ == "__main__":
     if "username" not in st.session_state: st.session_state.username = ""
     if "user_profile" not in st.session_state: st.session_state.user_profile = None
     
+    # 當頁面重新整理或帶著 p_user 時嘗試還原登入狀態
+    _try_restore_login()
+    
     # LINE 回調處理
     if "code" in st.query_params and not st.session_state.logged_in:
         code = st.query_params["code"]
         user_data, err = get_line_profile_name(code)
+        
+        # 💡 修正 A：先清理 URL 參數，切斷死迴圈連結
+        st.query_params.clear() 
+        
         if user_data:
-            line_id = user_data["id"] # 真實 ID: joe1369
+            line_id = user_data["id"]     # 真實 ID: joe1369
             line_name = user_data["name"] # 顯示姓名: 喬鈞老師
 
-            # 1. 寫入/更新用戶表，確保 line_user_id 存在
-        if supabase:
-            try:
-                supabase.table("users").upsert({
-                    "line_user_id": line_id,      # joe1369
-                    "username": line_name,         # 喬鈞老師
-                    "last_login": datetime.datetime.now().isoformat()
-                }, on_conflict="line_user_id").execute()
-            except Exception as e:
-                print(f"⚠️ 用戶表同步提醒: {e}")
-            else:
-                print(f"⚠️ 用戶表同步提醒: {e}")
+            # 💡 修正 B：執行資料庫同步 (防禦性寫法)
+            if supabase:
+                try:
+                    supabase.table("users").upsert({
+                        "line_user_id": line_id,
+                        "username": line_name,
+                        "last_login": datetime.datetime.now().isoformat()
+                    }, on_conflict="line_user_id").execute()
+                except Exception as e:
+                    # 如果資料庫欄位缺失會報錯，但我們不讓它卡死登入流程
+                    st.warning(f"⚠️ 帳號同步延遲 (請確認資料庫欄位): {e}")
 
-    if not st.session_state.logged_in:
-        _try_restore_login()
+            # 💡 修正 C：正確設定 Session 狀態並執行轉場
+            st.session_state.line_user_id = line_id
+            st.session_state.username = line_name
+            st.session_state.logged_in = True
+            
+            # 持久化登入 (存入 p_user=joe1369)
+            _persist_login(line_id) 
+            
+            # 成功後重啟頁面，進入主介面
+            st.rerun()
+        else:
+            st.error(f"LINE 登入失敗：{err}")
 
     if st.session_state.logged_in:
         show_member_app()
