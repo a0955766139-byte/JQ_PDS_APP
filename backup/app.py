@@ -122,7 +122,7 @@ def save_journal(username, content):
 def get_journals(username):
     if not supabase: return []
     try:
-        res = supabase.table("journals").select("*").eq("user_id", username).order("created_at", desc=True).execute()
+        res = supabase.table("journals").select("*").eq("line_user_id", username).order("created_at", desc=True).execute()
         return [(r['content'], r['created_at'][:10]) for r in res.data]
     except: return []
 

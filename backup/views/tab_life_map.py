@@ -53,7 +53,7 @@ def _get_my_profile(username):
 def _get_saved_charts(username):
     if not supabase: return []
     try:
-        res = supabase.table("saved_charts").select("*").eq("user_id", username).order("created_at", desc=True).execute()
+        res = supabase.table("saved_charts").select("*").eq("line_user_id", username).order("created_at", desc=True).execute()
         data = []
         for d in res.data:
             bd = datetime.datetime.strptime(d['birth_date'], "%Y-%m-%d").date() if d.get('birth_date') else datetime.date(1990,1,1)

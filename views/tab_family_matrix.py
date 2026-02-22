@@ -87,7 +87,7 @@ def _save_chart(line_id, name, eng, bd, uid=None, is_me=False):
             if uid: # 更新
                 supabase.table("saved_charts").update({"name": name, "english_name": eng, "birth_date": bd_str}).eq("id", uid).execute()
             else: # 新增：這裡 user_id 必須填入真實 ID
-                supabase.table("saved_charts").insert({"user_id": line_id, "name": name, "english_name": eng, "birth_date": bd_str}).execute()
+                supabase.table("saved_charts").insert({"line_user_id": line_id, "name": name, "english_name": eng, "birth_date": bd_str}).execute()
     except Exception as e: 
         st.error(f"存檔失敗: {e}")
 
