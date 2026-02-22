@@ -1,8 +1,0 @@
-streamlit
-supabase
-plotly
-pandas
-Pillow
-st-pages
-requests
-plotly==5.18.0
