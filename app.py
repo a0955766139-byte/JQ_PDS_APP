@@ -270,7 +270,7 @@ if __name__ == "__main__":
         col1, _, col2 = st.columns([6, 1, 4])
         with col1:
             st.markdown('### 歡迎來到九能量導航')
-            st.image("https://images.unsplash.com/photo-1519681393784-d120267933ba?q=80&w=2070", use_container_width=True)
+            st.image("https://images.unsplash.com/photo-1519681393784-d120267933ba?q=80&w=2070&auto=format&fit=crop", width="stretch")
         with col2:
             auth_url = get_line_auth_url()
             if auth_url:

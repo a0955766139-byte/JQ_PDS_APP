@@ -162,7 +162,7 @@ def _render_triangle(draw, card, chart):
 
 def _render_qrcode(card):
     qr = qrcode.QRCode(border=1, box_size=4)
-    qr.add_data("https://jq-pds-app.onrender.com")
+    qr.add_data("https://jq-pds-app-1.onrender.com")
     qr.make(fit=True)
     qr_img = qr.make_image(fill_color="#1b1b1f", back_color="white").convert("RGB")
     qr_w = qr_img.size[0]
