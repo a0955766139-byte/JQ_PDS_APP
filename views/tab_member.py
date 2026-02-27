@@ -12,6 +12,51 @@ except ImportError:
     auth_ui = None
     ads_manager = None
 
+# ==========================================
+# 新手註冊彈跳視窗 (Onboarding Dialog)
+# ==========================================
+@st.dialog("✨ 歡迎來到九能量！請完成新手註冊")
+def onboarding_popup():
+    st.markdown("這是您第一次登入，請填寫基本資料來解鎖您的 **專屬能量藍圖**。")
+    
+    with st.form("onboarding_form"):
+        # 預設帶入 LINE 的名字，但允許用戶修改為真實姓名
+        real_name = st.text_input("真實姓名", value=st.session_state.username)
+        eng_name = st.text_input("英文名字 / 暱稱 (選填)")
+        
+        # 這裡非常關鍵，因為人生地圖需要生日來計算
+        birth_date = st.date_input("出生日期", min_value=datetime.date(1900, 1, 1), value=datetime.date(1990, 1, 1))
+        email = st.text_input("聯絡信箱")
+        
+        submitted = st.form_submit_button("🚀 完成註冊，進入戰情室", use_container_width=True)
+
+        if submitted:
+            # 1. 防呆：確保重要資料有填寫
+            if not real_name or not email:
+                st.error("⚠️ 請填寫真實姓名與聯絡信箱")
+                return
+            
+            # 2. 賦予會員初始階級 (Tiering)
+            default_tier = "🌱 一般會員 (Free)"
+            
+            # 3. 準備寫入系統的資料袋 (這就解決了之前的 NoneType 當機問題！)
+            st.session_state.user_profile = {
+                "full_name": real_name,
+                "english_name": eng_name,
+                "birth_date": str(birth_date),
+                "email": email,
+                "tier": default_tier
+            }
+            
+            # ★ 這裡未來可以加上寫入 Supabase 資料庫的程式碼
+            # supabase.table("users").insert({...}).execute()
+            
+            # 4. 標記為已完成註冊，並刷新頁面關閉視窗
+            st.session_state.is_new_user = False
+            st.success("註冊成功！正在為您生成能量藍圖...")
+            time.sleep(1)
+            st.rerun()
+            
 # --- 資料庫連線 (保持穩定) ---
 @st.cache_resource
 def init_connection():
