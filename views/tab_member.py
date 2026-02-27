@@ -103,6 +103,10 @@ def render():
                 # 💡 關鍵：傳入 joe1369 進行物理存檔
                 if update_profile(line_id, new_name, new_eng, new_bd, email=new_email, phone=new_phone):
                     st.toast("✅ 資料已與 LINE ID 成功對位！", icon="🎉")
+
+                    # ★ 新增這兩行防呆：如果 user_profile 是空的，就給它一個空字典
+                    if st.session_state.get('user_profile') is None:
+                        st.session_state['user_profile'] = {}
                     # 更新 Session 避免重複抓取
                     st.session_state.user_profile['full_name'] = new_name
                     st.session_state.user_profile['english_name'] = new_eng
