@@ -214,25 +214,47 @@ def render(friends_raw=None):
             "name": d.get('name', '未命名'), 
             "english_name": d.get('english_name', ""), 
             "birthdate": bd, 
+            "category": d.get('category', "未分類"), # ★ 新增這行：抓取分類
             "type": "friend"
         })
 
+
+    # ==========================================
+    # ★ 新增：動態生成分類選單 (記憶用戶的自訂分類)
+    # ==========================================
+    default_cats = ["家人", "朋友", "同事", "客戶", "未分類"]
+    # 抓取用戶所有親友目前使用的分類
+    existing_cats = [p.get("category", "未分類") for p in all_profiles if p.get("type") == "friend"]
+    # 合併清單、去除重複項，並保留預設選項在最前面
+    cat_options = list(dict.fromkeys(default_cats + existing_cats))
+
+    
     # ==========================================
     # 4. 介面展示 (新增表單與卡片列表)
     # ==========================================
     with st.expander("➕ 新增親友資料", expanded=False):
         with st.form("family_matrix_add_form"):
+            # 第一排：姓名與英文名
             c1, c2 = st.columns(2)
             new_name = c1.text_input("姓名")
-            new_eng = c2.text_input("英文名")
-            new_bd = st.date_input("出生日期", min_value=datetime.date(1900,1,1))
+            new_eng = c2.text_input("英文名", placeholder="留空白，系統自動生成威妥瑪拼音")
+            
+            # 第二排：生日、下拉分類、自訂分類 (切成 3 欄)
+            c3, c4, c5 = st.columns(3)
+            new_bd = c3.date_input("出生日期", min_value=datetime.date(1900,1,1))
+            new_cat_select = c4.selectbox("📂 選擇現有分類", cat_options, index=cat_options.index("未分類"))
+            new_cat_custom = c5.text_input("✏️ 或自訂新分類", placeholder="若填寫將優先使用")
+
             if st.form_submit_button("建立檔案", type="primary"):
-                # ★ 核心魔法：如果沒填英文名，就自動拿中文名去產生威妥碼
                 final_eng = new_eng.strip() if new_eng.strip() else get_wade_giles(new_name)
+                # ★ 核心判斷：如果有在「自訂欄位」打字，就優先用自訂的；否則用下拉選單的
+                final_cat = new_cat_custom.strip() if new_cat_custom.strip() else new_cat_select
                 
                 try:
-                    _save_chart(line_id, new_name, final_eng, new_bd, is_me=False)
+                    _save_chart(line_id, new_name, final_eng, new_bd, final_cat) 
                     st.rerun()
+                except TypeError:
+                    st.error("⚠️ 存檔失敗：請確認 _save_chart 函式有開放接收 category 參數。")
                 except NameError:
                     st.error("系統錯誤：找不到存檔模組")
 
@@ -283,37 +305,44 @@ def render(friends_raw=None):
         else:
             with st.expander(f"⚙️ 管理【{target_profile['name']}】的檔案 (修改 / 刪除)", expanded=False):
                 with st.form(f"edit_form_{target_id}"):
+                    # 第一排：姓名與英文名
                     c1, c2 = st.columns(2)
-                    # 預設帶入原有的資料
                     edit_name = c1.text_input("📝 修改姓名", value=target_profile['name'])
-                    edit_eng = c2.text_input("📝 修改英文名", value=target_profile['english_name'])
-                    edit_bd = st.date_input("📅 修改出生日期", value=target_profile['birthdate'], min_value=datetime.date(1900,1,1))
+                    edit_eng = c2.text_input("📝 修改英文名", value=target_profile['english_name'], placeholder="留空白，系統自動生成威妥瑪拼音")
+                    
+                    # 第二排：生日與分類
+                    c3, c4 = st.columns(2)
+                    edit_bd = c3.date_input("📅 修改出生日期", value=target_profile['birthdate'], min_value=datetime.date(1900,1,1))
+                    
+                    # ★ 抓取原本的分類，並設為預設值
+                    cat_options = ["家人", "朋友", "同事", "客戶", "未分類"]
+                    current_cat = target_profile.get("category", "未分類")
+                    # 防呆：如果原本的分類不在此清單中，就預設為未分類
+                    cat_index = cat_options.index(current_cat) if current_cat in cat_options else 4
+                    edit_cat = c4.selectbox("📂 修改分類", cat_options, index=cat_index)
 
                     st.write("") # 排版留白
                     col_submit, col_delete = st.columns([1, 1])
                     
                     # 修改按鈕
-                    # 修改按鈕
                     with col_submit:
                         if st.form_submit_button("💾 儲存修改", type="primary", use_container_width=True):
-                            
-                            # ★ 核心魔法：如果清空了英文名，就自動重新產生威妥碼
                             final_edit_eng = edit_eng.strip() if edit_eng.strip() else get_wade_giles(edit_name)
-                            
                             from app import supabase
                             if supabase:
                                 try:
+                                    # ★ 這裡把 edit_cat 也存進資料庫
                                     supabase.table("saved_charts").update({
                                         "name": edit_name,
                                         "english_name": final_edit_eng,
-                                        "birth_date": str(edit_bd)
+                                        "birth_date": str(edit_bd),
+                                        "category": edit_cat 
                                     }).eq("id", target_id).execute()
                                     st.success(f"✅ 已成功更新 {edit_name} 的資料！")
                                     import time; time.sleep(1); st.rerun()
                                 except Exception as e:
                                     st.error(f"修改失敗: {e}")
                     
-                    # 刪除按鈕 (附帶防呆打勾機制)
                     with col_delete:
                         delete_confirm = st.checkbox("⚠️ 確認刪除此檔案 (打勾後再按刪除)")
                         if st.form_submit_button("🗑️ 刪除檔案", use_container_width=True):
@@ -322,7 +351,7 @@ def render(friends_raw=None):
                                 if supabase:
                                     try:
                                         supabase.table("saved_charts").delete().eq("id", target_id).execute()
-                                        st.session_state.selected_profile_id = "ME" # 刪除後把焦點切回自己
+                                        st.session_state.selected_profile_id = "ME"
                                         st.success("✅ 檔案已徹底刪除！")
                                         import time; time.sleep(1); st.rerun()
                                     except Exception as e:
