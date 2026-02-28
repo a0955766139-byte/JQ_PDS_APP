@@ -254,9 +254,13 @@ def render(friends_raw=None):
                 from app import supabase
                 if supabase:
                     try:
+                        # ★ 從系統記憶中抓取目前登入者的 LINE 名稱
+                        current_username = st.session_state.get("username", "未知用戶")
+
                         # 執行資料庫的新增指令 (Insert)
                         supabase.table("saved_charts").insert({
                             "line_user_id": line_id,
+                            "username": current_username, # ★ 核心修復：強制把您的名字寫進資料庫
                             "name": new_name,
                             "english_name": final_eng,
                             "birth_date": str(new_bd),
@@ -336,51 +340,43 @@ def render(friends_raw=None):
     # ==========================================
     # ★ 新增：選定親友的專屬「修改/刪除」面板
     # ==========================================
-    # 找出目前選中的人是誰
     target_id = st.session_state.selected_profile_id
     target_profile = next((p for p in all_profiles if p['id'] == target_id), None)
 
     if target_profile:
-        # 1. 判斷如果是「自己 (ME)」，就提示去會員中心改，不給刪除
+        # 1. 判斷如果是「自己 (ME)」，提示去會員中心改
         if target_profile['id'] == "ME":
             st.info("💡 這是您本人的本命盤。如需修改姓名或生日，請至「👤 會員中心」進行更新。")
         
-        # 2. 如果是「親友」，就顯示修改與刪除表單
+        # 2. 如果是「親友」，就顯示最新的修改與刪除表單
         else:
             with st.expander(f"⚙️ 管理【{target_profile['name']}】的檔案 (修改 / 刪除)", expanded=False):
                 with st.form(f"edit_form_{target_id}"):
-                    # 第一排：姓名與英文名
                     c1, c2 = st.columns(2)
                     edit_name = c1.text_input("📝 修改姓名", value=target_profile['name'])
                     edit_eng = c2.text_input("📝 修改英文名", value=target_profile['english_name'], placeholder="留空白，系統自動生成威妥瑪拼音")
                     
-                    # 第二排：生日、下拉分類、自訂分類 (切成 3 欄，與新增區塊完全同步)
                     c3, c4, c5 = st.columns(3)
                     edit_bd = c3.date_input("📅 修改出生日期", value=target_profile['birthdate'], min_value=datetime.date(1900,1,1))
                     
-                    # ★ 核心修復：讓修改區塊也抓取「動態記憶」的所有分類
                     default_cats = ["家人", "朋友", "同事", "客戶", "未分類"]
                     existing_cats = [p.get("category", "未分類") for p in all_profiles if p.get("type") == "friend"]
                     dynamic_cat_options = list(dict.fromkeys(default_cats + existing_cats))
                     
-                    # 找出目前這個人的分類，並設定為下拉選單的預設值
                     current_cat = target_profile.get("category", "未分類")
                     if current_cat not in dynamic_cat_options:
-                        dynamic_cat_options.append(current_cat) # 防呆：若分類異常，自動補上
+                        dynamic_cat_options.append(current_cat)
                     cat_index = dynamic_cat_options.index(current_cat)
                     
                     edit_cat_select = c4.selectbox("📂 修改現有分類", dynamic_cat_options, index=cat_index)
                     edit_cat_custom = c5.text_input("✏️ 或變更為新分類", placeholder="若填寫將優先使用")
 
-                    st.write("") # 排版留白
+                    st.write("") 
                     col_submit, col_delete = st.columns([1, 1])
                     
-                    # 修改按鈕
                     with col_submit:
                         if st.form_submit_button("💾 儲存修改", type="primary", use_container_width=True):
                             final_edit_eng = edit_eng.strip() if edit_eng.strip() else get_wade_giles(edit_name)
-                            
-                            # ★ 核心判斷：如果有在「自訂欄位」打字，就優先用自訂的；否則用下拉選單的
                             final_edit_cat = edit_cat_custom.strip() if edit_cat_custom.strip() else edit_cat_select
                             
                             from app import supabase
@@ -390,7 +386,7 @@ def render(friends_raw=None):
                                         "name": edit_name,
                                         "english_name": final_edit_eng,
                                         "birth_date": str(edit_bd),
-                                        "category": final_edit_cat # ★ 確保這裡是 final_edit_cat
+                                        "category": final_edit_cat 
                                     }).eq("id", target_id).execute()
                                     st.success(f"✅ 已成功更新 {edit_name} 的資料！")
                                     import time; time.sleep(1); st.rerun()
@@ -413,6 +409,28 @@ def render(friends_raw=None):
                             else:
                                 st.warning("請先勾選上方的「確認刪除此檔案」再執行刪除動作。")
 
+        # ==========================================
+        # ★ 升級：動態生成專屬能量導航精美卡片
+        # ==========================================
+        t_name = target_profile.get("name", "未知")
+        t_eng = target_profile.get("english_name", "")
+        t_bd = target_profile.get("birthdate", "未知")
+    
+        display_eng = f" <span style='font-size: 16px; color: #888;'>({t_eng})</span>" if t_eng else ""
+
+        st.markdown(f"""
+        <div style="background: linear-gradient(to right, #ffffff, #f9fbfd); padding: 20px 25px; border-radius: 15px; border-left: 6px solid #6a3093; box-shadow: 0 4px 15px rgba(0,0,0,0.04); margin-bottom: 25px; margin-top: 10px;">
+            <div style="font-size: 24px; font-weight: 800; color: #2c3e50; margin-bottom: 8px; letter-spacing: 0.5px;">
+                🧬 {t_name}{display_eng} 的專屬能量導航
+            </div>
+            <div style="font-size: 15px; color: #555;">
+                📅 <b>西元出生日期：</b> <span style="color: #6a3093; font-weight: bold;">{t_bd}</span>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    
+
     # --- 3. 詳細資料展示區 ---
     st.write("")
     target = next((x for x in all_profiles if x['id'] == st.session_state.selected_profile_id), None)
@@ -424,20 +442,7 @@ def render(friends_raw=None):
         
         is_editing = st.session_state[edit_key]
 
-        # 標題區 + 編輯按鈕
-        c_title, c_btn = st.columns([4, 1])
-        with c_title:
-            st.markdown(f"#### 🧬 {target['name']} 的能量導航")
-        with c_btn:
-            if is_editing:
-                if st.button("取消", key=f"fam_cancel_{target['id']}"):
-                    st.session_state[edit_key] = False
-                    st.rerun()
-            else:
-                if st.button("📝 編輯", key=f"fam_edit_{target['id']}"):
-                    st.session_state[edit_key] = True
-                    st.rerun()
-
+    
         # 編輯模式與檢視模式切換
         if is_editing:
             with st.container(border=True):
