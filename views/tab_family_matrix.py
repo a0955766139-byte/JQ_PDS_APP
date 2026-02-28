@@ -246,17 +246,31 @@ def render(friends_raw=None):
             new_cat_custom = c5.text_input("✏️ 或自訂新分類", placeholder="若填寫將優先使用")
 
             if st.form_submit_button("建立檔案", type="primary"):
+                # 1. 處理英文名與分類
                 final_eng = new_eng.strip() if new_eng.strip() else get_wade_giles(new_name)
-                # ★ 核心判斷：如果有在「自訂欄位」打字，就優先用自訂的；否則用下拉選單的
                 final_cat = new_cat_custom.strip() if new_cat_custom.strip() else new_cat_select
                 
-                try:
-                    _save_chart(line_id, new_name, final_eng, new_bd, final_cat) 
-                    st.rerun()
-                except TypeError:
-                    st.error("⚠️ 存檔失敗：請確認 _save_chart 函式有開放接收 category 參數。")
-                except NameError:
-                    st.error("系統錯誤：找不到存檔模組")
+                # 2. ★ 終極修復：直接將資料寫入 Supabase，不再依賴舊的 _save_chart
+                from app import supabase
+                if supabase:
+                    try:
+                        # 執行資料庫的新增指令 (Insert)
+                        supabase.table("saved_charts").insert({
+                            "line_user_id": line_id,
+                            "name": new_name,
+                            "english_name": final_eng,
+                            "birth_date": str(new_bd),
+                            "category": final_cat
+                        }).execute()
+                        
+                        # 成功提示與畫面刷新
+                        st.success(f"✅ 已成功新增親友檔案：{new_name}")
+                        import time; time.sleep(1); st.rerun()
+                        
+                    except Exception as e:
+                        st.error(f"⚠️ 寫入資料庫失敗: {e}")
+                else:
+                    st.error("⚠️ 無法連線至資料庫，請稍後再試。")
 
     st.divider()
 
@@ -265,27 +279,57 @@ def render(friends_raw=None):
         st.session_state.selected_profile_id = "ME"
 
     # 渲染頭像列表
-    cols = st.columns(4)
-    for idx, p in enumerate(all_profiles):
-        # 計算主命數作為 Icon
-        lpn = sum(int(d) for d in p['birthdate'].strftime("%Y%m%d"))
-        while lpn > 9: lpn = sum(int(d) for d in str(lpn))
-        
-        is_selected = (st.session_state.selected_profile_id == p['id'])
-        
-        with cols[idx % 4]:
-            # 讓被選中的人，按鈕變成深色 (primary)，沒選中的保持淺色 (secondary)
-            btn_type = "primary" if is_selected else "secondary"
+    # ==========================================
+    # ★ 新增：動態分類分頁標籤 (Tabs)
+    # ==========================================
+    # 1. 抓取目前所有親友的「不重複分類」清單
+    unique_cats = []
+    for p in all_profiles:
+        cat = p.get("category")
+        # 排除掉自己(ME)，只收集親友的分類
+        if cat and cat not in unique_cats and p["id"] != "ME":
+            unique_cats.append(cat)
             
-            if st.button(
-                f"{p['name']}\n{lpn}號人", 
-                key=f"btn_{p['id']}", 
-                use_container_width=True,
-                type=btn_type,  # ★ 加上這行，視覺反饋會非常棒！
-                help=f"點擊查看 {p['name']} 的詳細盤"
-            ):
-                st.session_state.selected_profile_id = p['id']
-                st.rerun()
+    # 2. 建立分頁標籤 (把 "全部" 永遠放第一位，其餘自動排列)
+    tab_titles = ["🌟 全部"] + [f"📂 {c}" for c in unique_cats]
+    tabs = st.tabs(tab_titles)
+
+    # 3. 根據選中的分頁，過濾並顯示對應的按鈕
+    for i, tab in enumerate(tabs):
+        with tab:
+            current_title = tab_titles[i]
+            
+            # 過濾邏輯：如果是「全部」，就顯示所有人；否則只抓對應分類的人
+            if "全部" in current_title:
+                display_profiles = all_profiles
+            else:
+                target_cat = current_title.replace("📂 ", "")
+                display_profiles = [p for p in all_profiles if p.get('category') == target_cat]
+
+            # 渲染該分頁的頭像列表
+            if not display_profiles:
+                st.info("此分類目前沒有親友資料。")
+            else:
+                cols = st.columns(4)
+                for idx, p in enumerate(display_profiles):
+                    # 計算主命數
+                    lpn = sum(int(d) for d in p['birthdate'].strftime("%Y%m%d"))
+                    while lpn > 9: lpn = sum(int(d) for d in str(lpn))
+                    
+                    is_selected = (st.session_state.selected_profile_id == p['id'])
+                    btn_type = "primary" if is_selected else "secondary"
+                    
+                    with cols[idx % 4]:
+                        # ⚠️ 關鍵防呆：按鈕的 key 必須加上分頁編號 (i)，防止 Streamlit 報錯重複的 ID
+                        if st.button(
+                            f"{p['name']}\n{lpn}號人", 
+                            key=f"btn_tab{i}_{p['id']}", 
+                            use_container_width=True,
+                            type=btn_type,
+                            help=f"點擊查看 {p['name']} 的詳細盤"
+                        ):
+                            st.session_state.selected_profile_id = p['id']
+                            st.rerun()
 
     st.divider()
 
@@ -483,5 +527,42 @@ def render(friends_raw=None):
 
         # [Tab 4] 高峰與挑戰
         with t4:
-            st.warning("🚧 曼格拉系統運算法則開發中...")
-            st.info("此區塊將展示人生四大高峰與挑戰數字，敬請期待 V2.1 更新。")
+            st.markdown("##### 🏔️ 人生四大高峰與挑戰 (Diamond Chart)")
+            engine = pds_core.NineEnergyNumerology()
+            diamond_data = engine.calculate_diamond_chart(display_bd.year, display_bd.month, display_bd.day)
+
+            for stage in diamond_data.get('timeline', []):
+                stage_name = stage.get("stage", "階段")
+                age_range = stage.get("age_range", "")
+                pinnacle = stage.get("p_val", "-")
+                challenge = stage.get("c_val", "-")
+
+                with st.container(border=True):
+                    st.markdown(f"""
+                    <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px;">
+                        <div style="font-size:20px; font-weight:700;">{stage_name}</div>
+                        <div style="color:#5c43b8; font-weight:600;">{age_range}</div>
+                    </div>
+                    <div style="height:2px; background:#efeef9; margin:10px 0 16px;"></div>
+                    """, unsafe_allow_html=True)
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        st.markdown(f"""
+                        <div style="border-radius:12px; padding:14px; background:linear-gradient(145deg,#ffe7e6,#ffd0cb); text-align:center; box-shadow:0 6px 14px rgba(198, 0, 0, 0.08);">
+                            <div style="font-size:14px; letter-spacing:0.4px;">⭕ 高峰數</div>
+                            <div style="font-size:28px; font-weight:700; color:#c62828;">{pinnacle}</div>
+                            <div style="font-size:12px; color:#992828;">開闢機會 / 能量紅利</div>
+                        </div>
+                        """, unsafe_allow_html=True)
+                    with col2:
+                        st.markdown(f"""
+                        <div style="border-radius:12px; padding:14px; background:linear-gradient(145deg,#e6e1ff,#d0c1ff); text-align:center; box-shadow:0 6px 14px rgba(76, 0, 153, 0.08);">
+                            <div style="font-size:14px; letter-spacing:0.4px;">⚠️ 挑戰數</div>
+                            <div style="font-size:28px; font-weight:700; color:#4b0082;">{challenge}</div>
+                            <div style="font-size:12px; color:#4b0082;">功課 / 能量試煉</div>
+                        </div>
+                        """, unsafe_allow_html=True)
+    else:
+        st.info("請先建立或選擇一筆檔案，以顯示能量導航資訊。")
+
+    st.divider()
