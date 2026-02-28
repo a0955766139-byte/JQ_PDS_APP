@@ -10,8 +10,8 @@ from supabase import create_client, Client
 # ==========================================
 st.set_page_config(page_title="九能量導航", page_icon="logo.jpg", layout="wide", initial_sidebar_state="expanded")
 
-# 隱藏 UI 浮水印元件
-st.markdown("<style>#MainMenu {visibility: hidden;} footer {visibility: hidden;} header {visibility: hidden;}</style>", unsafe_allow_html=True)
+# 隱藏 UI 浮水印元件 (保留 header 以免側邊欄開關消失)
+st.markdown("<style>#MainMenu {visibility: hidden;} footer {visibility: hidden;}</style>", unsafe_allow_html=True)
 
 # ==========================================
 # 1. 核心環境設定 & 模組安全匯入
@@ -61,36 +61,18 @@ def get_secret_value(section: str, key: str, default=None):
     return st.secrets.get(section, {}).get(key, default)
 
 # ==========================================
-# 2. 持久化登入與資料庫工具
+# 2. 持久化登入與資料庫工具 (🛡️ 終極資安防護版)
 # ==========================================
 def _persist_login(user_id):
-    params = dict(st.query_params)
-    params["p_user"] = str(user_id)
-    st.query_params = params
+    # 🛡️ 絕對禁止把 ID 放進網址！這裡直接 pass 不做事
+    pass
 
 def _clear_persist_login():
-    params = dict(st.query_params)
-    params.pop("p_user", None)
-    st.query_params = params
+    # 🧹 登出時，直接使用內建語法把網址參數清得乾乾淨淨
+    st.query_params.clear()
 
 def _try_restore_login():
-    p_user_id = st.query_params.get("p_user") 
-    if p_user_id and not st.session_state.get("logged_in"):
-        try:
-            res = supabase.table("users").select("*").eq("line_user_id", p_user_id).execute()
-            if res.data:
-                user_profile = res.data[0]
-                st.session_state.logged_in = True
-                st.session_state.line_user_id = p_user_id 
-                st.session_state.username = user_profile.get('username') or "能量導航員"
-                st.session_state.user_profile = user_profile
-                return True
-            else:
-                _clear_persist_login()
-                return False
-        except Exception as e:
-            print(f"登入還原失敗: {e}")
-            return False
+    # 🛡️ 關閉網址還原功能。重新整理時，請用戶再按一次綠色 LINE 按鈕最安全！
     return False
 
 @st.cache_resource
