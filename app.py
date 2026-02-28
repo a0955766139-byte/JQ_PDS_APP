@@ -122,6 +122,22 @@ def sync_legacy_records(line_id, display_name):
         supabase.table("users").update({"line_user_id": line_id}).eq("username", display_name).is_("line_user_id", None).execute()
         supabase.table("saved_charts").update({"line_user_id": line_id}).eq("username", display_name).is_("line_user_id", None).execute()
     except Exception: pass
+# ==========================================
+# ★ 新增：中文轉威妥瑪拼音的魔法函式
+# ==========================================
+def get_wade_giles(text):
+    """將中文姓名轉換為威妥瑪拼音 (大寫)"""
+    if not text: return ""
+    try:
+        from pypinyin import pinyin, Style
+        raw_pinyin = pinyin(text, style=Style.WADEGILES)
+        result = []
+        for item in raw_pinyin:
+            clean_text = ''.join([c for c in item[0] if c.isalpha()]).upper()
+            result.append(clean_text)
+        return " ".join(result)
+    except Exception:
+        return ""
 
 # ==========================================
 # 3. 新手註冊彈跳視窗 (Onboarding)
@@ -132,7 +148,7 @@ def onboarding_popup():
     
     with st.form("onboarding_form"):
         real_name = st.text_input("真實姓名", value=st.session_state.get("username", ""))
-        eng_name = st.text_input("英文名字 / 暱稱 (選填)")
+        eng_name = st.text_input("英文名字 / 暱稱 (選填)", placeholder="留空白，系統自動生成英文名字(威妥瑪)")
         birth_date = st.date_input("出生日期", min_value=datetime.date(1900, 1, 1), value=datetime.date(1983, 9, 8))
         email = st.text_input("聯絡信箱")
         
@@ -143,10 +159,13 @@ def onboarding_popup():
                 st.error("⚠️ 請填寫真實姓名與聯絡信箱")
                 return
             
-            # 建立完整的 user_profile 字典
+            # ★ 核心魔法：如果沒填英文名，就自動拿中文真實姓名去產生威妥碼
+            final_eng = eng_name.strip() if eng_name.strip() else get_wade_giles(real_name)
+            
+            # 建立完整的 user_profile 字典 (使用 final_eng)
             profile_data = {
                 "full_name": real_name,
-                "english_name": eng_name,
+                "english_name": final_eng, # ★ 這裡改成 final_eng
                 "birth_date": str(birth_date),
                 "email": email,
                 "tier": "🌱 一般會員 (Free)"
@@ -158,7 +177,7 @@ def onboarding_popup():
                 try:
                     supabase.table("users").update({
                         "full_name": real_name,
-                        "english_name": eng_name,
+                        "english_name": final_eng, # ★ 這裡也改成 final_eng
                         "birth_date": str(birth_date),
                         "email": email,
                         "role": "registered"
