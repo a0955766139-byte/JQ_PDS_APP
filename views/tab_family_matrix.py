@@ -354,16 +354,23 @@ def render(friends_raw=None):
                     edit_name = c1.text_input("📝 修改姓名", value=target_profile['name'])
                     edit_eng = c2.text_input("📝 修改英文名", value=target_profile['english_name'], placeholder="留空白，系統自動生成威妥瑪拼音")
                     
-                    # 第二排：生日與分類
-                    c3, c4 = st.columns(2)
+                    # 第二排：生日、下拉分類、自訂分類 (切成 3 欄，與新增區塊完全同步)
+                    c3, c4, c5 = st.columns(3)
                     edit_bd = c3.date_input("📅 修改出生日期", value=target_profile['birthdate'], min_value=datetime.date(1900,1,1))
                     
-                    # ★ 抓取原本的分類，並設為預設值
-                    cat_options = ["家人", "朋友", "同事", "客戶", "未分類"]
+                    # ★ 核心修復：讓修改區塊也抓取「動態記憶」的所有分類
+                    default_cats = ["家人", "朋友", "同事", "客戶", "未分類"]
+                    existing_cats = [p.get("category", "未分類") for p in all_profiles if p.get("type") == "friend"]
+                    dynamic_cat_options = list(dict.fromkeys(default_cats + existing_cats))
+                    
+                    # 找出目前這個人的分類，並設定為下拉選單的預設值
                     current_cat = target_profile.get("category", "未分類")
-                    # 防呆：如果原本的分類不在此清單中，就預設為未分類
-                    cat_index = cat_options.index(current_cat) if current_cat in cat_options else 4
-                    edit_cat = c4.selectbox("📂 修改分類", cat_options, index=cat_index)
+                    if current_cat not in dynamic_cat_options:
+                        dynamic_cat_options.append(current_cat) # 防呆：若分類異常，自動補上
+                    cat_index = dynamic_cat_options.index(current_cat)
+                    
+                    edit_cat_select = c4.selectbox("📂 修改現有分類", dynamic_cat_options, index=cat_index)
+                    edit_cat_custom = c5.text_input("✏️ 或變更為新分類", placeholder="若填寫將優先使用")
 
                     st.write("") # 排版留白
                     col_submit, col_delete = st.columns([1, 1])
@@ -372,15 +379,18 @@ def render(friends_raw=None):
                     with col_submit:
                         if st.form_submit_button("💾 儲存修改", type="primary", use_container_width=True):
                             final_edit_eng = edit_eng.strip() if edit_eng.strip() else get_wade_giles(edit_name)
+                            
+                            # ★ 核心判斷：如果有在「自訂欄位」打字，就優先用自訂的；否則用下拉選單的
+                            final_edit_cat = edit_cat_custom.strip() if edit_cat_custom.strip() else edit_cat_select
+                            
                             from app import supabase
                             if supabase:
                                 try:
-                                    # ★ 這裡把 edit_cat 也存進資料庫
                                     supabase.table("saved_charts").update({
                                         "name": edit_name,
                                         "english_name": final_edit_eng,
                                         "birth_date": str(edit_bd),
-                                        "category": edit_cat 
+                                        "category": final_edit_cat # ★ 確保這裡是 final_edit_cat
                                     }).eq("id", target_id).execute()
                                     st.success(f"✅ 已成功更新 {edit_name} 的資料！")
                                     import time; time.sleep(1); st.rerun()
