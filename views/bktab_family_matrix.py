@@ -50,29 +50,6 @@ def _get_my_profile(username):
         return None
     except: return None
 
-# ==========================================
-# ★ 新增：中文轉威妥瑪拼音的魔法函式
-# ==========================================
-def get_wade_giles(text):
-    """將中文姓名轉換為威妥瑪拼音 (大寫)"""
-    if not text: return ""
-    try:
-        from pypinyin import pinyin, Style
-        # 轉換為威妥瑪拼音 (會帶有數字聲調，例如 CHUN1)
-        raw_pinyin = pinyin(text, style=Style.WADEGILES)
-        result = []
-        for item in raw_pinyin:
-            # 移除非英文字母的字元 (過濾掉數字)，並轉成大寫
-            clean_text = ''.join([c for c in item[0] if c.isalpha()]).upper()
-            result.append(clean_text)
-        return " ".join(result) # 以空格分隔，例如：YU CHIAO CHUN
-    except ImportError:
-        print("尚未安裝 pypinyin 套件")
-        return ""
-    except Exception:
-        return ""
-
-
 # --- 資料存取函式 ---
 def get_user_charts():
     """核心：使用真實 ID (joe1369) 抓取資料庫 22 筆資料"""
@@ -164,62 +141,31 @@ def _draw_pyramid_svg(chart_data, bd):
 
 # --- 主渲染邏輯 ---
 def render(friends_raw=None):
-    # ==========================================
-    # 1. 🛡️ 防護機制：確認登入狀態與身分對位
-    # ==========================================
+    # 1. 💡 身分對位：後台用的門牌 (joe1369)
     line_id = st.session_state.get("line_user_id") 
-    if not line_id:
-        st.warning("請先透過 LINE 登入")
-        return
-
-    # 🎒 取得使用者資料 (合併重複宣告，統一使用 c_name)
-    user_profile = st.session_state.get("user_profile") or {}
-    c_name = user_profile.get("full_name") or st.session_state.get("username", "未知姓名")
     
-    # ★ 關鍵修復：取得自己的真實生日，若無則預設 1990-01-01 (避免算錯命數)
-    my_bd_str = user_profile.get("birth_date")
-    if my_bd_str:
-        my_bd = datetime.datetime.strptime(my_bd_str, "%Y-%m-%d").date()
-    else:
-        my_bd = datetime.date(1990, 1, 1)
-
-    # ==========================================
-    # 2. ★ 乾淨俐落的單一標題
-    # ==========================================
-    st.markdown(f"### 👨‍👩‍👧‍👦 {c_name} 的家族矩陣：親友檔案庫")
-    st.write("") 
-       
-    # ==========================================
-    # 3. 準備親友資料清單
-    # ==========================================
-    # 確保 friends_raw 有資料，若無則預設為空列表 [] (避免報錯)
-    friends_list = friends_raw if friends_raw is not None else []
-
+    # 2. 💡 視覺對位：前台顯現的稱呼 (喬鈞老師)
+    display_name = st.session_state.get("username", "未知用戶")
+    
+    # 3. 顯示歡迎語
+    st.markdown(f"### 👨‍👩‍👧‍👦 {display_name} 的家族矩陣") # 這裡顯示姓名
+    
+    # 4. 取得親友資料
+    friends_raw = friends_raw if friends_raw is not None else get_user_charts()
+    
+    st.markdown("### 👨‍👩‍👧‍👦 家族矩陣：親友檔案庫")
+    
+    # --- 1. 資料準備 ---
     all_profiles = []
     
-    # 把「自己」加進列表 (使用動態抓取的真實姓名與生日)
-    all_profiles.append({
-        "id": "ME", 
-        "name": c_name, 
-        "english_name": user_profile.get("english_name", ""), 
-        "birthdate": my_bd, 
-        "type": "me"
-    })
+    # 取得自己 (模擬或從 users 表抓)
+    all_profiles.append({"id": "ME", "name": display_name, "english_name": "", "birthdate": datetime.date(2000,1,1), "type": "me"})
 
-    # 把「親友」加進列表
-    for d in friends_list:
-        bd = datetime.datetime.strptime(d['birth_date'], "%Y-%m-%d").date() if d.get('birth_date') else datetime.date(1990,1,1)
-        all_profiles.append({
-            "id": d.get('id'), 
-            "name": d.get('name', '未命名'), 
-            "english_name": d.get('english_name', ""), 
-            "birthdate": bd, 
-            "type": "friend"
-        })
+    for d in friends_raw:
+        bd = datetime.datetime.strptime(d['birth_date'], "%Y-%m-%d").date() if d.get('birth_date') else datetime.date(2000,1,1)
+        all_profiles.append({"id": d['id'], "name": d['name'], "english_name": d.get('english_name', ""), "birthdate": bd, "type": "friend"})
 
-    # ==========================================
-    # 4. 介面展示 (新增表單與卡片列表)
-    # ==========================================
+    # 💡 修正：新增按鈕傳入 line_id 而非 username
     with st.expander("➕ 新增親友資料", expanded=False):
         with st.form("family_matrix_add_form"):
             c1, c2 = st.columns(2)
@@ -227,17 +173,12 @@ def render(friends_raw=None):
             new_eng = c2.text_input("英文名")
             new_bd = st.date_input("出生日期", min_value=datetime.date(1900,1,1))
             if st.form_submit_button("建立檔案", type="primary"):
-                # ★ 核心魔法：如果沒填英文名，就自動拿中文名去產生威妥碼
-                final_eng = new_eng.strip() if new_eng.strip() else get_wade_giles(new_name)
-                
-                try:
-                    _save_chart(line_id, new_name, final_eng, new_bd, is_me=False)
-                    st.rerun()
-                except NameError:
-                    st.error("系統錯誤：找不到存檔模組")
+                _save_chart(line_id, new_name, new_eng, new_bd, is_me=False)
+                st.rerun()
 
     st.divider()
 
+    # --- 2. 列表展示 (Card View) ---
     # 使用 session_state 紀錄目前選中的 profile_id
     if "selected_profile_id" not in st.session_state:
         st.session_state.selected_profile_id = "ME"
@@ -251,84 +192,19 @@ def render(friends_raw=None):
         
         is_selected = (st.session_state.selected_profile_id == p['id'])
         
+        # 卡片樣式
+        card_bg = "#f0f2f6" if not is_selected else "#e3d5f2"
+        border_color = "transparent" if not is_selected else "#6a3093"
+        
         with cols[idx % 4]:
-            # 讓被選中的人，按鈕變成深色 (primary)，沒選中的保持淺色 (secondary)
-            btn_type = "primary" if is_selected else "secondary"
-            
             if st.button(
                 f"{p['name']}\n{lpn}號人", 
                 key=f"btn_{p['id']}", 
                 use_container_width=True,
-                type=btn_type,  # ★ 加上這行，視覺反饋會非常棒！
                 help=f"點擊查看 {p['name']} 的詳細盤"
             ):
                 st.session_state.selected_profile_id = p['id']
                 st.rerun()
-
-    st.divider()
-
-    # ==========================================
-    # ★ 新增：選定親友的專屬「修改/刪除」面板
-    # ==========================================
-    # 找出目前選中的人是誰
-    target_id = st.session_state.selected_profile_id
-    target_profile = next((p for p in all_profiles if p['id'] == target_id), None)
-
-    if target_profile:
-        # 1. 判斷如果是「自己 (ME)」，就提示去會員中心改，不給刪除
-        if target_profile['id'] == "ME":
-            st.info("💡 這是您本人的本命盤。如需修改姓名或生日，請至「👤 會員中心」進行更新。")
-        
-        # 2. 如果是「親友」，就顯示修改與刪除表單
-        else:
-            with st.expander(f"⚙️ 管理【{target_profile['name']}】的檔案 (修改 / 刪除)", expanded=False):
-                with st.form(f"edit_form_{target_id}"):
-                    c1, c2 = st.columns(2)
-                    # 預設帶入原有的資料
-                    edit_name = c1.text_input("📝 修改姓名", value=target_profile['name'])
-                    edit_eng = c2.text_input("📝 修改英文名", value=target_profile['english_name'])
-                    edit_bd = st.date_input("📅 修改出生日期", value=target_profile['birthdate'], min_value=datetime.date(1900,1,1))
-
-                    st.write("") # 排版留白
-                    col_submit, col_delete = st.columns([1, 1])
-                    
-                    # 修改按鈕
-                    # 修改按鈕
-                    with col_submit:
-                        if st.form_submit_button("💾 儲存修改", type="primary", use_container_width=True):
-                            
-                            # ★ 核心魔法：如果清空了英文名，就自動重新產生威妥碼
-                            final_edit_eng = edit_eng.strip() if edit_eng.strip() else get_wade_giles(edit_name)
-                            
-                            from app import supabase
-                            if supabase:
-                                try:
-                                    supabase.table("saved_charts").update({
-                                        "name": edit_name,
-                                        "english_name": final_edit_eng,
-                                        "birth_date": str(edit_bd)
-                                    }).eq("id", target_id).execute()
-                                    st.success(f"✅ 已成功更新 {edit_name} 的資料！")
-                                    import time; time.sleep(1); st.rerun()
-                                except Exception as e:
-                                    st.error(f"修改失敗: {e}")
-                    
-                    # 刪除按鈕 (附帶防呆打勾機制)
-                    with col_delete:
-                        delete_confirm = st.checkbox("⚠️ 確認刪除此檔案 (打勾後再按刪除)")
-                        if st.form_submit_button("🗑️ 刪除檔案", use_container_width=True):
-                            if delete_confirm:
-                                from app import supabase
-                                if supabase:
-                                    try:
-                                        supabase.table("saved_charts").delete().eq("id", target_id).execute()
-                                        st.session_state.selected_profile_id = "ME" # 刪除後把焦點切回自己
-                                        st.success("✅ 檔案已徹底刪除！")
-                                        import time; time.sleep(1); st.rerun()
-                                    except Exception as e:
-                                        st.error(f"刪除失敗: {e}")
-                            else:
-                                st.warning("請先勾選上方的「確認刪除此檔案」再執行刪除動作。")
 
     # --- 3. 詳細資料展示區 ---
     st.write("")
