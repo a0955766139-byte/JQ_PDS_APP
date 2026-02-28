@@ -91,6 +91,7 @@ def get_line_auth_url():
     if not cid or not redir: return None
     return f"https://access.line.me/oauth2/v2.1/authorize?response_type=code&client_id={cid}&redirect_uri={redir}&state=pds&scope=profile%20openid%20email"
 
+
 def get_line_profile_name(code):
     try:
         token_url = "https://api.line.me/oauth2/v2.1/token"
@@ -227,7 +228,9 @@ if __name__ == "__main__":
     # 嘗試還原登入狀態
     _try_restore_login()
     
-    # LINE 回調處理 (攔截通行證)
+# ==========================================
+# LINE 回調處理 (攔截通行證與資料讀取)
+# ==========================================
     if "code" in st.query_params and not st.session_state.logged_in:
         code = st.query_params["code"]
         user_data, err = get_line_profile_name(code)
@@ -240,16 +243,28 @@ if __name__ == "__main__":
 
             if supabase:
                 try:
+                    # 1. 紀錄登入時間 (Upsert)
                     supabase.table("users").upsert({
                         "line_user_id": line_id,
                         "username": line_name,
                         "last_login": datetime.datetime.now().isoformat()
                     }, on_conflict="line_user_id").execute()
+                    
+                    # 2. ★ 關鍵救援：把使用者填過的「詳細資料」抓出來！
+                    res = supabase.table("users").select("*").eq("line_user_id", line_id).execute()
+                    if res.data:
+                        fetched_profile = res.data[0]
+                        # 檢查是否真的有填過新手註冊 (利用 email 或 birth_date 判斷)
+                        if fetched_profile.get("email") or fetched_profile.get("birth_date"):
+                            st.session_state.user_profile = fetched_profile
+                            st.session_state.is_new_user = False
+                            
                 except Exception as e:
                     pass # 不干擾登入流程
                 finally:
                     sync_legacy_records(line_id, line_name)
 
+            # 3. 設定基本 Session 並轉場
             st.session_state.line_user_id = line_id
             st.session_state.username = line_name
             st.session_state.logged_in = True
