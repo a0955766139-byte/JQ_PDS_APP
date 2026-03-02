@@ -213,14 +213,29 @@ def render(friends_raw=None):
     st.write("") 
 
     current_used = len([p for p in all_profiles if p.get("type") == "friend"])
-    user_tier = st.session_state.user_profile.get("tier", "🌱 註冊會員")
+    # 2. 抓取目前登入者的等級，並進行「超級防呆」字串清理
+    raw_tier = str(st.session_state.user_profile.get("tier", "free"))
     
-    if "專業" in user_tier or "Pro" in user_tier:
-        map_limit = 50
+    # ★ 核心升級：拔除所有單引號、雙引號、左右空格，並強制轉小寫
+    clean_tier = raw_tier.replace("'", "").replace('"', "").strip().lower()
+    
+    # 攔截乾淨的英文代碼，換上中文標籤
+    if clean_tier == "free":
+        user_tier = "🌱 註冊會員"
+    elif clean_tier == "pro":
+        user_tier = "💎 專業會員"
+    elif clean_tier == "vip":
+        user_tier = "👑 VIP會員"
+    else:
+        user_tier = raw_tier # 若有其他未知的等級，先照原樣顯示
+    
+    # 3. 判斷額度上限
+    if "專業" in user_tier:
+        map_limit = 100
     elif "VIP" in user_tier:
         map_limit = 999
     else:
-        map_limit = 5 
+        map_limit = 10
         
     st.caption(f"目前等級：{user_tier} | 額度：{current_used} / {map_limit}")
 
