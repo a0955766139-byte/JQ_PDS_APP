@@ -63,12 +63,46 @@ def _save_chart(line_user_id, name, eng, bd, category, uid=None, is_me=False):
 
 # --- 3. 主渲染入口 ---
 def render(friends_raw=None): # ✅ 必須接收這個參數
+    
+    # ==========================================
+    # 1. 🛡️ 防護機制優先：確認登入狀態
+    # ==========================================
     line_id = st.session_state.get("line_user_id")
     if not line_id:
         st.warning("請先透過 LINE 登入")
         return
-    
+        
+    # 🎒 統一取得資料袋 (合併重複宣告)
     user_profile = st.session_state.get("user_profile") or {}
+    
+    # ==========================================
+    # 2. ★ 頂部個人資料確認區塊 (身分名牌)
+    # ==========================================
+    # 從資料袋中抓出使用者的資料
+    c_name = user_profile.get("full_name") or st.session_state.get("username", "未知姓名")
+    e_name = user_profile.get("english_name") or ""
+    b_date = user_profile.get("birth_date") or "未設定出生日期"
+    
+    # 格式化顯示：如果有英文名字，才加上括號
+    display_eng = f" <span style='font-size: 16px; color: #888;'>({e_name})</span>" if e_name else ""
+
+    # 繪製精美的身分名牌卡片
+    st.markdown(f"""
+    <div style="background: linear-gradient(to right, #ffffff, #f9fbfd); padding: 20px 25px; border-radius: 15px; border-left: 6px solid #6a3093; box-shadow: 0 4px 15px rgba(0,0,0,0.04); margin-bottom: 25px; margin-top: 10px;">
+        <div style="font-size: 24px; font-weight: 800; color: #2c3e50; margin-bottom: 8px; letter-spacing: 0.5px;">
+            🧬 {c_name}{display_eng} 的專屬能量導航
+        </div>
+        <div style="font-size: 15px; color: #555;">
+            📅 <b>西元出生日期：</b> <span style="color: #6a3093; font-weight: bold;">{b_date}</span>
+            <span style="font-size: 13px; color: #aaa; margin-left: 15px;">(若需更正，請至「會員中心」修改)</span>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+    # ==========================================
+
+    # ==========================================
+    # 3. ⚙️ 會員階級與數據處理邏輯
+    # ==========================================
     user_role = user_profile.get("role", "registered")
     tier_config = get_user_tier(user_role)
     

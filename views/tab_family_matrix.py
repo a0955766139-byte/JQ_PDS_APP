@@ -172,11 +172,9 @@ def render(friends_raw=None):
         st.warning("請先透過 LINE 登入")
         return
 
-    # 🎒 取得使用者資料 (合併重複宣告，統一使用 c_name)
     user_profile = st.session_state.get("user_profile") or {}
     c_name = user_profile.get("full_name") or st.session_state.get("username", "未知姓名")
     
-    # ★ 關鍵修復：取得自己的真實生日，若無則預設 1990-01-01 (避免算錯命數)
     my_bd_str = user_profile.get("birth_date")
     if my_bd_str:
         my_bd = datetime.datetime.strptime(my_bd_str, "%Y-%m-%d").date()
@@ -184,20 +182,11 @@ def render(friends_raw=None):
         my_bd = datetime.date(1990, 1, 1)
 
     # ==========================================
-    # 2. ★ 乾淨俐落的單一標題
+    # 2. ★ 準備親友資料清單 (必須先做這步！)
     # ==========================================
-    st.markdown(f"### 👨‍👩‍👧‍👦 {c_name} 的家族矩陣：親友檔案庫")
-    st.write("") 
-       
-    # ==========================================
-    # 3. 準備親友資料清單
-    # ==========================================
-    # 確保 friends_raw 有資料，若無則預設為空列表 [] (避免報錯)
     friends_list = friends_raw if friends_raw is not None else []
-
     all_profiles = []
     
-    # 把「自己」加進列表 (使用動態抓取的真實姓名與生日)
     all_profiles.append({
         "id": "ME", 
         "name": c_name, 
@@ -206,7 +195,6 @@ def render(friends_raw=None):
         "type": "me"
     })
 
-    # 把「親友」加進列表
     for d in friends_list:
         bd = datetime.datetime.strptime(d['birth_date'], "%Y-%m-%d").date() if d.get('birth_date') else datetime.date(1990,1,1)
         all_profiles.append({
@@ -214,60 +202,66 @@ def render(friends_raw=None):
             "name": d.get('name', '未命名'), 
             "english_name": d.get('english_name', ""), 
             "birthdate": bd, 
-            "category": d.get('category', "未分類"), # ★ 新增這行：抓取分類
+            "category": d.get('category', "未分類"), 
             "type": "friend"
         })
 
+    # ==========================================
+    # 3. ★ 印出標題、並計算顯示會員等級與額度
+    # ==========================================
+    st.markdown(f"### 👨‍👩‍👧‍👦 {c_name} 的家族矩陣：親友檔案庫")
+    st.write("") 
+
+    current_used = len([p for p in all_profiles if p.get("type") == "friend"])
+    user_tier = st.session_state.user_profile.get("tier", "🌱 註冊會員")
+    
+    if "專業" in user_tier or "Pro" in user_tier:
+        map_limit = 50
+    elif "VIP" in user_tier:
+        map_limit = 999
+    else:
+        map_limit = 5 
+        
+    st.caption(f"目前等級：{user_tier} | 額度：{current_used} / {map_limit}")
 
     # ==========================================
-    # ★ 新增：動態生成分類選單 (記憶用戶的自訂分類)
+    # 4. 動態生成分類選單
     # ==========================================
     default_cats = ["家人", "朋友", "同事", "客戶", "未分類"]
-    # 抓取用戶所有親友目前使用的分類
     existing_cats = [p.get("category", "未分類") for p in all_profiles if p.get("type") == "friend"]
-    # 合併清單、去除重複項，並保留預設選項在最前面
     cat_options = list(dict.fromkeys(default_cats + existing_cats))
-
     
     # ==========================================
-    # 4. 介面展示 (新增表單與卡片列表)
+    # 5. 介面展示 (新增表單)
     # ==========================================
     with st.expander("➕ 新增親友資料", expanded=False):
         with st.form("family_matrix_add_form"):
-            # 第一排：姓名與英文名
             c1, c2 = st.columns(2)
             new_name = c1.text_input("姓名")
             new_eng = c2.text_input("英文名", placeholder="留空白，系統自動生成威妥瑪拼音")
             
-            # 第二排：生日、下拉分類、自訂分類 (切成 3 欄)
             c3, c4, c5 = st.columns(3)
             new_bd = c3.date_input("出生日期", min_value=datetime.date(1900,1,1))
             new_cat_select = c4.selectbox("📂 選擇現有分類", cat_options, index=cat_options.index("未分類"))
             new_cat_custom = c5.text_input("✏️ 或自訂新分類", placeholder="若填寫將優先使用")
 
             if st.form_submit_button("建立檔案", type="primary"):
-                # 1. 處理英文名與分類
                 final_eng = new_eng.strip() if new_eng.strip() else get_wade_giles(new_name)
                 final_cat = new_cat_custom.strip() if new_cat_custom.strip() else new_cat_select
                 
-                # 2. ★ 終極修復：直接將資料寫入 Supabase，不再依賴舊的 _save_chart
                 from app import supabase
                 if supabase:
                     try:
-                        # ★ 從系統記憶中抓取目前登入者的 LINE 名稱
                         current_username = st.session_state.get("username", "未知用戶")
-
-                        # 執行資料庫的新增指令 (Insert)
                         supabase.table("saved_charts").insert({
                             "line_user_id": line_id,
-                            "username": current_username, # ★ 核心修復：強制把您的名字寫進資料庫
+                            "username": current_username, 
                             "name": new_name,
                             "english_name": final_eng,
                             "birth_date": str(new_bd),
                             "category": final_cat
                         }).execute()
                         
-                        # 成功提示與畫面刷新
                         st.success(f"✅ 已成功新增親友檔案：{new_name}")
                         import time; time.sleep(1); st.rerun()
                         

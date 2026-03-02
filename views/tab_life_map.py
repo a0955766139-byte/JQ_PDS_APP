@@ -129,17 +129,4 @@ def render(friends_raw=None): # ✅ 必須接收這個參數
         life_map_ui.render_energy_tabs(target['birthdate'], target['english_name'])
 
     st.divider()
-    st.markdown(f"### 👨‍👩‍👧‍👦 家族矩陣：親友檔案庫")
-    st.caption(f"目前等級：{tier_config['name']} | 額度：{current_used} / {tier_config['map_limit']}")
-
-    if current_used < tier_config['map_limit']:
-        with st.expander("➕ 新增親友資料"):
-            with st.form("life_map_add_form"):
-                n_name = st.text_input("姓名")
-                n_eng = st.text_input("英文名 (留空自動生成)")
-                n_bd = st.date_input("出生日期", value=datetime.date(1990,1,1))
-                n_cat = st.selectbox("分類", ["家人", "朋友", "同事", "客戶", "未分類"])
-                if st.form_submit_button("建立檔案"):
-                    _save_chart(line_id, n_name, n_eng, n_bd, n_cat) # ✅ 使用 line_id 存檔
-                    time.sleep(1)
-                    st.rerun()
+    
