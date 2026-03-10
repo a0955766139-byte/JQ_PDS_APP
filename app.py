@@ -8,7 +8,13 @@ from supabase import create_client, Client
 # ==========================================
 # 0. 頁面設定 (必須是全站第一個執行的 Streamlit 指令)
 # ==========================================
-st.set_page_config(page_title="九能量導航", page_icon="logo.jpg", layout="wide", initial_sidebar_state="expanded")
+st.set_page_config(
+    page_title="九能量導航",
+    # 使用專屬 icon 圖檔，瀏覽器分頁、書籤與桌面捷徑都會帶入此圖示
+    page_icon="assets/2____1____-945d919c-3c66-4010-9b66-101f710931da.png",
+    layout="wide",
+    initial_sidebar_state="expanded",
+)
 
 # 隱藏 UI 浮水印元件 (保留 header 以免側邊欄開關消失)
 st.markdown("<style>#MainMenu {visibility: hidden;} footer {visibility: hidden;}</style>", unsafe_allow_html=True)
@@ -322,3 +328,4 @@ if __name__ == "__main__":
                 st.error("⚠️ 系統錯誤：未檢測到 LINE Channel ID")
             st.write("")
             st.caption("© 2026 Jow-Jiun Culture | 喬鈞心學")
+            
