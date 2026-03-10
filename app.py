@@ -4,20 +4,57 @@ import time
 import requests
 import streamlit as st
 from supabase import create_client, Client
+from PIL import Image
+import base64
+import streamlit.components.v1 as components
 
 # ==========================================
 # 0. 頁面設定 (必須是全站第一個執行的 Streamlit 指令)
 # ==========================================
+app_icon = Image.open("logo.png")
 st.set_page_config(
     page_title="九能量導航",
     # 使用專屬 icon 圖檔，瀏覽器分頁、書籤與桌面捷徑都會帶入此圖示
-    page_icon="assets/2____1____-945d919c-3c66-4010-9b66-101f710931da.png",
+    page_icon=app_icon,
     layout="wide",
     initial_sidebar_state="expanded",
 )
 
 # 隱藏 UI 浮水印元件 (保留 header 以免側邊欄開關消失)
 st.markdown("<style>#MainMenu {visibility: hidden;} footer {visibility: hidden;}</style>", unsafe_allow_html=True)
+
+# ==========================================
+# ★ 破解蘋果魔咒：強制寫入 Apple Touch Icon
+# ==========================================
+def inject_apple_icon(image_path):
+    try:
+        # 讀取圖片並轉換成網頁能直接看懂的 Base64 密碼
+        with open(image_path, "rb") as f:
+            encoded_string = base64.b64encode(f.read()).decode()
+        
+        # 透過隱藏的 iframe 強行將 Apple 專屬標籤塞入母網頁的 <head> 中
+        components.html(
+            f"""
+            <script>
+                const iconUrl = "data:image/png;base64,{encoded_string}";
+                
+                // 尋找是否已經有 apple-touch-icon 標籤，沒有就建立一個
+                let appleLink = window.parent.document.querySelector("link[rel='apple-touch-icon']");
+                if (!appleLink) {{
+                    appleLink = window.parent.document.createElement('link');
+                    appleLink.rel = 'apple-touch-icon';
+                    window.parent.document.head.appendChild(appleLink);
+                }}
+                appleLink.href = iconUrl;
+            </script>
+            """,
+            height=0, width=0
+        )
+    except Exception as e:
+        pass # 防呆：如果找不到圖檔也不會讓系統崩潰
+
+# 啟動注射器
+inject_apple_icon("logo.png")
 
 # ==========================================
 # 1. 核心環境設定 & 模組安全匯入
