@@ -249,12 +249,16 @@ def show_member_app():
         st.markdown(f"### 👤 {st.session_state.username}")
         # 顯示會員階級 (如果有填寫的話)
         if st.session_state.get("user_profile") and "tier" in st.session_state.user_profile:
-            st.caption(f"🎖️ {st.session_state.user_profile['tier']}")
+            # 抓取乾淨的等級並自動翻譯
+            sidebar_tier = str(st.session_state.user_profile['tier']).lower()
+            if "pro" in sidebar_tier:
+                display_name = "💎 專業會員"
+            elif "vip" in sidebar_tier:
+                display_name = "👑 VIP會員"
+            else:
+                display_name = "🌱 一般會員"
+            st.caption(f"{display_name}")
         st.divider()
-        if st.button("🚪 登出系統", use_container_width=True):
-            _clear_persist_login()
-            st.session_state.clear()
-            st.rerun()
 
     user_profile = st.session_state.get("user_profile") or {}
     # 如果資料不齊全，給予溫馨提示
