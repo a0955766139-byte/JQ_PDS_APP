@@ -235,7 +235,7 @@ def render(friends_raw=None):
     elif "VIP" in user_tier:
         map_limit = 999
     else:
-        map_limit = 10
+        map_limit = 5
         
     st.caption(f"目前等級：{user_tier} | 額度：{current_used} / {map_limit}")
 

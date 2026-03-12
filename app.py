@@ -316,6 +316,15 @@ if __name__ == "__main__":
                     res = supabase.table("users").select("*").eq("line_user_id", line_id).execute()
                     if res.data:
                         fetched_profile = res.data[0]
+                        
+                        # =====================================
+                        # 🧹 源頭清洗：拔除 tier 欄位中的討厭引號
+                        # =====================================
+                        raw_tier = str(fetched_profile.get("tier", "free"))
+                        clean_tier = raw_tier.replace("'", "").replace('"', "").strip()
+                        fetched_profile["tier"] = clean_tier
+                        # =====================================
+
                         # 檢查是否真的有填過新手註冊 (利用 email 或 birth_date 判斷)
                         if fetched_profile.get("email") or fetched_profile.get("birth_date"):
                             st.session_state.user_profile = fetched_profile
